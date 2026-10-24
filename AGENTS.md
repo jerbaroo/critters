@@ -10,7 +10,8 @@
   `import Data.Aeson qualified as Aeson`.
 - Every import must be qualified or have an explicit import list.
 - Import `Data.Aeson` qualified, except that operators may be unqualified.
-- Use `Witch.from` for conversions instead of `Data.Text.pack`.
+- Use `Witch.from` for conversions, including lazy/strict `Text`, instead of
+  conversion-specific functions such as `Data.Text.pack`.
 - Import `Autodocodec` functions qualified and types/constructors unqualified.
 - Define `HasCodec` instances and derive Aeson's `FromJSON` and `ToJSON` through
   `Autodocodec`.

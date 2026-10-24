@@ -5,18 +5,20 @@ import Critters.CLI.Options qualified as CLIOptions
 import Critters.Command qualified as Command
 import Critters.Engine qualified as Engine
 import Critters.Event (Event)
-import Critters.Input (Input)
-import Critters.Input qualified as Input
+import Critters.Interface (Interface)
+import Critters.Interface qualified as Interface
 import Critters.Pretty (pretty)
 import Critters.Save qualified as Save
 import Critters.State.GameState (GameState)
 import Data.Aeson qualified as Aeson
 import Data.Text (Text)
 import Data.Text.IO qualified as TextIO
+import Data.Text.Lazy.Builder (toLazyText)
+import Data.Text.Lazy.Builder.Int (decimal)
 import Options.Applicative qualified as Options
 import System.Directory (doesPathExist)
 import System.Exit (exitFailure, exitSuccess)
-import System.IO (hFlush, isEOF, stderr, stdout)
+import System.IO (stderr)
 import System.IO.Error (ioeGetErrorString, tryIOError)
 import Witch (from)
 
@@ -40,38 +42,33 @@ loadHistory path = do
         Right history -> pure history
     else writeHistory path [] >> pure []
 
-loop :: FilePath -> [Event] -> GameState -> IO ()
-loop saveFile history state = do
-  input <- readInput
-  let command = Engine.commandFor state input
-      (nextState, events) = Engine.step state input
-  TextIO.putStrLn $ "Input: " <> pretty input
-  TextIO.putStrLn $ "Command: " <> maybe "Nothing" pretty command
+loop :: Interface -> FilePath -> [Event] -> GameState -> IO ()
+loop interface saveFile history state = do
+  userInput <- Interface.input interface
+  let command = Engine.commandFor state userInput
+      (nextState, events) = Engine.step state userInput
+  Interface.log interface $ "Input: " <> pretty userInput
+  Interface.log interface $ "Command: " <> maybe "Nothing" pretty command
+  mapM_ (\event -> Interface.log interface $ "Event: " <> pretty event) events
   nextHistory <- saveEvents saveFile history events
+  Interface.output interface nextState
   case command of
     Just Command.Quit -> exitSuccess
-    _ -> loop saveFile nextHistory nextState
-
-readInput :: IO Input
-readInput = do
-  TextIO.putStr "> "
-  hFlush stdout
-  isEOF >>= \case
-    True -> exitSuccess
-    False ->
-      Input.parse <$> TextIO.getLine >>= \case
-        Just input -> pure input
-        Nothing -> TextIO.putStrLn "Unrecognized input." >> readInput
+    _ -> loop interface saveFile nextHistory nextState
 
 run :: IO ()
 run = do
   configuration <- Options.execParser CLI.options
   let gameFile = CLIOptions.gameFile configuration
+      interface = Interface.select (CLIOptions.interfaceType configuration)
       saveFile = CLIOptions.saveFile configuration
   state <- loadGameState gameFile
   history <- loadHistory saveFile
-  TextIO.putStrLn $ "Loaded game from " <> from gameFile
-  loop saveFile history (Save.apply state history)
+  let resumedState = Save.apply state history
+  Interface.log interface $ "Loaded game from " <> from gameFile
+  Interface.log interface $ from $ toLazyText $ "Replayed events: " <> decimal (length history)
+  Interface.output interface resumedState
+  loop interface saveFile history resumedState
 
 saveEvents :: FilePath -> [Event] -> [Event] -> IO [Event]
 saveEvents _ history [] = pure history

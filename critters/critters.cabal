@@ -73,6 +73,9 @@ library
         Critters.Event
         Critters.Input
         Critters.Input.Direction
+        Critters.Interface
+        Critters.Interface.Debug
+        Critters.InterfaceType
         Critters.Pretty
         Critters.Run
         Critters.Save

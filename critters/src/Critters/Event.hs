@@ -2,6 +2,7 @@ module Critters.Event (Event (..)) where
 
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
+import Critters.Pretty (Pretty (..))
 import Critters.State.Position (Position)
 import Data.Aeson qualified as Aeson
 
@@ -17,3 +18,6 @@ instance HasCodec Event where
       PlayerMoved
         <$> Codec.requiredField "position" "The player's position after moving." Codec..= position
         <* Codec.requiredFieldWith "type" (Codec.literalTextCodec "player-moved") "The event type." Codec..= const "player-moved"
+
+instance Pretty Event where
+  pretty (PlayerMoved destination) = "PlayerMoved " <> pretty destination
