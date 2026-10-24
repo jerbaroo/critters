@@ -1,6 +1,8 @@
 module BattleTests (tests) where
 
+import Critters.Battle.Action (Action (..))
 import Critters.Battle.Engine qualified as BattleEngine
+import Critters.Battle.Turn qualified as Turn
 import Critters.Command qualified as Command
 import Critters.Engine qualified as Engine
 import Critters.Event qualified as Event
@@ -11,6 +13,8 @@ import Critters.Input.Direction (Direction (East))
 import Critters.State.Affliction (Affliction (..))
 import Critters.State.Battle (Battle (..), defaultBattle)
 import Critters.State.BattleDefinition (BattleDefinition (..), defaultDefinition)
+import Critters.State.BattleOutcome (BattleOutcome (..))
+import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.BattleProfile (BattleProfile (..), defaultProfile)
 import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.CombatConfig (CombatConfig (..), defaultCombat)
@@ -103,9 +107,12 @@ snapshotTests = testGroup "Battle snapshots"
       assertBool "Expected nonnegative inventory counts" (isLeft (Aeson.eitherDecode @GameState "{\"version\":1,\"maps\":{},\"playerPosition\":{\"x\":0,\"y\":0},\"inventory\":{\"tonic\":-1}}"))
   ]
 
+start :: GameState -> GameState
+start state = either (const state) (\active -> state{battle = Just active}) (BattleEngine.beginBattle state "practice")
+
 tests :: TestTree
 tests = testGroup "Battle"
-  [ lifecycleTests, profileTests, snapshotTests,
+  [ lifecycleTests, profileTests, snapshotTests, turnTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)
@@ -133,4 +140,36 @@ tests = testGroup "Battle"
           mapM_ (\encoded -> assertBool "Expected invalid move data to fail" (isLeft (Aeson.eitherDecode @Move encoded)))
             ["{\"name\":\"x\",\"accuracy\":2}", "{\"name\":\"x\",\"maxUses\":-1}", "{\"name\":\"x\",\"minHits\":2,\"maxHits\":1}", "{\"name\":\"x\",\"effects\":[{\"type\":\"chance\",\"probability\":-1,\"effect\":{\"type\":\"clear-status\"}}]}"]
       ]
+  ]
+
+turnTests :: TestTree
+turnTests = testGroup "Turns"
+  [ testCase "Apply both moves, consume uses, then skip a fainted opponent" $
+      let opened = start fixture
+          first = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
+          second = foldl' Engine.applyEvent first (Turn.resolveAction first (UseMove (MoveId "strike")))
+       in assertBool "Expected ordered damage and victory without a second retaliation" (map hitPoints (members (party first)) == [15] && map hitPoints (members (party second)) == [15] && fmap battleOutcome (battle second) == Just (Just Victory) && fmap battleTurn (battle second) == Just 2 && map (profileRemainingUses . battleProfile) (members (party first)) == [Map.singleton (MoveId "strike") 4]),
+    testCase "Use configured speed ordering and require a free replacement" $
+      let faster = defaultSpecies{speciesLearnset = Map.singleton 1 [MoveId "strike"], speciesStats = Map.fromList [("attack", 10), ("defense", 10), ("speed", 50)]}
+          configured = fixture{combat = (combat fixture){configSpecies = Map.insert "stonekin" faster (configSpecies (combat fixture))}, party = Party [basicCritter 3 2 20 "leafling", basicCritter 10 2 10 "leafling"]}
+          opened = start configured
+          fainted = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
+          replacement = foldl' Engine.applyEvent fainted (Turn.resolveAction fainted (SwitchCritter 1))
+       in assertBool "Expected the fainted actor to skip its move and replacement to consume no turn" (fmap battlePhase (battle fainted) == Just ReplacementMenu && null (Turn.resolveAction fainted (UseMove (MoveId "strike")))) >> assertBool "Expected the new critter intact" (fmap battleActivePlayer (battle replacement) == Just 1 && fmap battleTurn (battle replacement) == Just 1 && map hitPoints (members (party replacement)) == [0,10]),
+    testCase "A voluntary switch consumes a turn" $
+      let opened = start fixture{party = Party [basicCritter 20 2 20 "leafling", basicCritter 10 2 10 "leafling"]}
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (SwitchCritter 1))
+       in assertBool "Expected retaliation against the switched-in critter" (map hitPoints (members (party result)) == [20,5] && fmap battleTurn (battle result) == Just 1),
+    testCase "Apply outcome effects only after acknowledgement" $
+      let configured = fixture{combat = (combat fixture){configBattles = Map.adjust (\definition -> definition{definitionVictoryEffects = [SetFlag (FlagId "practice.won") True]}) "practice" (configBattles (combat fixture))}}
+          opened = start configured
+          won = iterate (\state -> foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId "strike")))) opened !! 2
+          (closed, _) = Engine.step won Input.Enter
+       in assertBool "Expected a visible outcome, then story effects and exploration" (Map.lookup (FlagId "practice.won") (flags won) == Nothing && battle closed == Nothing && Map.lookup (FlagId "practice.won") (flags closed) == Just True && playerPosition closed == playerPosition configured),
+    testCase "Battle menus support arrows, j/k and cancellation" $
+      let opened = start fixture
+          (moves, _) = Engine.step opened Input.Enter
+          (back, _) = Engine.step moves (Input.Character 'j')
+          (actions, _) = Engine.step back Input.Enter
+       in assertBool "Expected context-sensitive menu commands" (fmap battlePhase (battle moves) == Just MoveMenu && fmap battlePhase (battle actions) == Just ActionMenu && Engine.commandFor opened (Input.Character 'p') == Nothing)
   ]

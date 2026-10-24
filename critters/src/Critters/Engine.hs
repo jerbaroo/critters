@@ -12,6 +12,9 @@ import Critters.Input (Input)
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
 import Critters.State.ActiveInteraction (ActiveInteraction (..))
+import Critters.State.Battle (Battle)
+import Critters.State.Battle qualified as Battle
+import Critters.State.BattlePhase (BattlePhase (Finished))
 import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.Choice qualified as Choice
 import Critters.State.Condition (Condition (..))
@@ -93,7 +96,7 @@ commandFor state input
       Input.Character 'p' -> Just CloseMenu
       Input.Escape -> Just CloseMenu
       _ -> Nothing
-  | isJust (battle state) = Nothing
+  | isJust (battle state) = BattleEngine.commandFor input
   | Just active <- activeInteraction state = case activeSelectedChoice active of
       Just _ -> case input of
         Input.Character 'j' -> Just SelectNext
@@ -139,7 +142,8 @@ conditionHolds state (Flag identifier expected) = Map.findWithDefault False iden
 eventsFor :: GameState -> Command -> [Event]
 eventsFor state command
   | partyOpen state = [Event.PartyClosed | command == CloseMenu]
-  | isJust (battle state) = []
+  | Just active <- battle state =
+      if command == ConfirmSelection && Battle.battlePhase active == Finished then finishBattle state active else BattleEngine.eventsFor state command
   | Just active <- activeInteraction state = interactionEvents state active command
   | otherwise = case command of
       AdvanceConversation -> case conversation state of
@@ -185,6 +189,13 @@ eventsForEffects state = fmap snd . foldM apply (state, [])
         Effect.SetFlag identifier value -> Right (Event.FlagChanged identifier value)
         Effect.StartBattle identifier -> Event.BattleStarted <$> BattleEngine.beginBattle current identifier
       pure (applyEvent current event, events <> [event])
+
+finishBattle :: GameState -> Battle -> [Event]
+finishBattle state active = case eventsForEffects closed (BattleEngine.completionEffects active) of
+  Left message -> Event.BattleEnded : startInteraction closed (Interaction [] [] [message] [])
+  Right effects -> Event.BattleEnded : effects
+  where
+    closed = applyEvent state Event.BattleEnded
 
 interactEvents :: GameState -> [Event]
 interactEvents state = case GameState.npcAt state facing of

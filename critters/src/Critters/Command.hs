@@ -1,10 +1,12 @@
 module Critters.Command (Command (..)) where
 
+import Critters.Battle.Action (Action)
 import Critters.Input.Direction (Direction (..))
 import Critters.Pretty (Pretty (..))
 
 data Command
-  = AdvanceConversation
+  = ActInBattle Action
+  | AdvanceConversation
   | CloseMenu
   | ConfirmSelection
   | EndConversation
@@ -18,6 +20,7 @@ data Command
 
 instance Pretty Command where
   pretty = \case
+    ActInBattle action -> "ActInBattle " <> pretty action
     AdvanceConversation -> "AdvanceConversation"
     CloseMenu -> "CloseMenu"
     ConfirmSelection -> "ConfirmSelection"

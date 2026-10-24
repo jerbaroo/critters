@@ -67,8 +67,11 @@ library
 
     -- Modules exported by the library.
     exposed-modules:
+        Critters.Battle.Action
         Critters.Battle.Common
         Critters.Battle.Engine
+        Critters.Battle.Menu
+        Critters.Battle.Turn
         Critters.CLI
         Critters.CLI.Options
         Critters.Codec
