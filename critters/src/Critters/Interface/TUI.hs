@@ -5,7 +5,9 @@ import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Interface.TUI.Keyboard qualified as Keyboard
+import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState (..), conversationText, npcAt, world)
+import Critters.State.Party qualified as Party
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
 import Critters.State.World (tileAt)
@@ -63,37 +65,16 @@ render = Text.intercalate "\n" . map renderRow . renderFrame
 
 -- | Two padded text rows, clipped to the viewport's column width.
 renderConversation :: Text -> [[Cell]]
-renderConversation message = map row $ take 2 (wrapped <> repeat "")
-  where
-    columns = width * 2
-    plain = Text.filter (\value -> value == '\n' || not (isControl value)) message
-    row line =
-      [ cell
-      | characters <- groupBy (\_ value -> wcwidth value == 0) (from (line <> Text.replicate (columns - textWidth line) " ")),
-        let cell = Cell (from characters) True,
-        Cell.columns cell > 0
-      ]
-    split remaining line remainingText = case Text.uncons remainingText of
-      Nothing -> (line, "")
-      Just (value, rest)
-        | characterWidth > remaining -> (line, remainingText)
-        | otherwise -> split (remaining - characterWidth) (line <> from [value]) rest
-        where
-          characterWidth = max 0 (wcwidth value)
-    textWidth = Text.foldl' (\total value -> total + max 0 (wcwidth value)) 0
-    wrap remainingText
-      | Text.null remainingText = [""]
-      | otherwise =
-          let (line, rest) = split columns "" remainingText
-           in line : if Text.null rest then [] else wrap rest
-    wrapped = concatMap wrap (Text.splitOn "\n" plain)
+renderConversation = renderText 2
 
 -- | A fixed viewport centered on the player, with north at the top and blanks
 -- for missing cells, including those outside the map.
 renderFrame :: GameState -> [[Cell]]
-renderFrame state = case conversationText state of
-  Just message -> take (height - 2) rows <> renderConversation message
-  Nothing -> rows
+renderFrame state
+  | partyOpen state = renderParty state
+  | otherwise = case conversationText state of
+      Just message -> take (height - 2) rows <> renderConversation message
+      Nothing -> rows
   where
     building tile symbol roof position
       | tileAt (world state) position{x = x position - 1} /= Just tile
@@ -137,12 +118,63 @@ renderFrame state = case conversationText state of
       | row <- [0 .. height - 1]
       ]
 
+-- | Display the party within the viewport, reserving the last row for closing.
+renderParty :: GameState -> [[Cell]]
+renderParty state =
+  renderText (height - 1) (Text.intercalate "\n" (heading : "" : entries))
+    <> renderText 1 "Esc: Close"
+  where
+    critters = Party.members (party state)
+    entries = case critters of
+      [] -> ["Your party is empty"]
+      _ -> zipWith entry [1 ..] critters
+    entry index critter =
+      number index
+        <> ". "
+        <> Critter.species critter
+        <> "  Lv "
+        <> number (Critter.level critter)
+        <> "  HP "
+        <> number (Critter.hitPoints critter)
+        <> "/"
+        <> number (Critter.maxHitPoints critter)
+    heading = "Party — " <> number (length critters) <> " / " <> number (maxPartySize state)
+    number :: Int -> Text
+    number value = from (toLazyText (decimal value))
+
 renderRow :: [Cell] -> Text
 renderRow [] = ""
 renderRow (first : rest) =
   let (same, remaining) = span ((== whiteBackground first) . whiteBackground) rest
       text = Text.concat (map glyph (first : same))
    in (if whiteBackground first then "\ESC[30;107m" <> text <> "\ESC[0m" else text) <> renderRow remaining
+
+-- | Wrap and pad text to the viewport's column width, clipping extra rows.
+renderText :: Int -> Text -> [[Cell]]
+renderText rowCount message = map row $ take rowCount (wrapped <> repeat "")
+  where
+    columns = width * 2
+    plain = Text.filter (\value -> value == '\n' || not (isControl value)) message
+    row line =
+      [ cell
+      | characters <- groupBy (\_ value -> wcwidth value == 0) (from (line <> Text.replicate (columns - textWidth line) " ")),
+        let cell = Cell (from characters) True,
+        Cell.columns cell > 0
+      ]
+    split remaining line remainingText = case Text.uncons remainingText of
+      Nothing -> (line, "")
+      Just (value, rest)
+        | characterWidth > remaining -> (line, remainingText)
+        | otherwise -> split (remaining - characterWidth) (line <> from [value]) rest
+        where
+          characterWidth = max 0 (wcwidth value)
+    textWidth = Text.foldl' (\total value -> total + max 0 (wcwidth value)) 0
+    wrap remainingText
+      | Text.null remainingText = [""]
+      | otherwise =
+          let (line, rest) = split columns "" remainingText
+           in line : if Text.null rest then [] else wrap rest
+    wrapped = concatMap wrap (Text.splitOn "\n" plain)
 
 writeLog :: [[Cell]] -> FilePath -> Text -> IO ()
 writeLog _ = TextIO.appendFile

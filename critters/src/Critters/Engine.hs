@@ -43,12 +43,17 @@ commandFor :: GameState -> Input -> Maybe Command
 commandFor state input
   | input == Input.Character 'q' = Just Quit
   | partyOpen state = case input of
+      Input.Character 'p' -> Just CloseMenu
       Input.Escape -> Just CloseMenu
       _ -> Nothing
   | otherwise = case (conversation state, input) of
       (Just _, Input.Enter) -> Just AdvanceConversation
       (Just _, Input.Escape) -> Just EndConversation
       (Just _, _) -> Nothing
+      (Nothing, Input.Character 'h') -> Just (Walk West)
+      (Nothing, Input.Character 'j') -> Just (Walk South)
+      (Nothing, Input.Character 'k') -> Just (Walk North)
+      (Nothing, Input.Character 'l') -> Just (Walk East)
       (Nothing, Input.Character 'p') -> Just OpenParty
       (Nothing, Input.Down) -> Just (Walk South)
       (Nothing, Input.Enter) -> Just Interact

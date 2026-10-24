@@ -81,7 +81,7 @@ conversationTests =
           assertBool "Expected no conversation facts without an active conversation" $
             Engine.eventsFor npcState command == [],
       testCase "Ignore movement while talking" $
-        forM_ [(East, Input.Right), (North, Input.Up), (South, Input.Down), (West, Input.Left)] $ \(direction, input) ->
+        forM_ [(East, Input.Right), (North, Input.Up), (South, Input.Down), (West, Input.Left), (West, Input.Character 'h'), (South, Input.Character 'j'), (North, Input.Character 'k'), (East, Input.Character 'l')] $ \(direction, input) ->
           let active = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}
            in assertBool "Expected movement to be ignored even through direct command execution" $
                 Engine.commandFor active input == Nothing
@@ -248,6 +248,13 @@ engineTests =
       testCase "Unmapped and non-movement inputs leave state unchanged" $
         forM_ [Input.Character 'x', Input.Character 'q', Input.Enter, Input.Escape] $
           \input -> assertBool "Expected no state changes or events" (Engine.step state input == (state, [])),
+      testCase "Use hjkl as exploration aliases for the arrow keys" $
+        forM_ [('h', Input.Left, West), ('j', Input.Down, South), ('k', Input.Up, North), ('l', Input.Right, East)] $ \(key, arrow, direction) ->
+          forM_ [state, withDestination Water, withLedge South, warpState, npcState] $ \current ->
+            let input = Input.Character key
+             in assertBool "Expected the same walk command, resulting state and events as the corresponding arrow" $
+                  Engine.commandFor current input == Just (Command.Walk direction)
+                    && Engine.step current input == Engine.step current arrow,
       testCase "Walk across terrain and doorways" $
         forM_ [Door, Flowers, Grass, Ground, Path, Sand, Stairs, TallGrass] $ \tile ->
           let current = withDestination tile
@@ -350,6 +357,66 @@ npcState =
       playerDirection = East
     }
 
+partyRenderTests :: TestTree
+partyRenderTests =
+  testGroup
+    "Party rendering"
+    [ testCase "Clip a large party while keeping the close hint visible" $ do
+        let critters = replicate TUI.height (Critter 1 1 1 "visible") <> [Critter 1 1 1 "hidden"]
+            state = initialState{maxPartySize = length critters, party = Party critters, partyOpen = True}
+            drawing = rows state
+        assertViewport state
+        assertBool "Expected the first members to be visible, overflow clipped, and the footer retained" $
+          Text.isPrefixOf "1. visible" (drawing !! 2)
+            && not (Text.isInfixOf "hidden" (Text.concat drawing))
+            && Text.stripEnd (last drawing) == "Esc: Close",
+      testCase "Display critter details in party order" $ do
+        let state =
+              initialState
+                { maxPartySize = 9,
+                  party = Party [Critter 7 5 20 "leafling", Critter 0 2 12 "brookling"],
+                  partyOpen = True
+                }
+        assertViewport state
+        assertBool "Expected the count, configured maximum, species, level and current/maximum HP" $
+          map Text.stripEnd (take 4 (rows state))
+            == ["Party — 2 / 9", "", "1. leafling  Lv 5  HP 7/20", "2. brookling  Lv 2  HP 0/12"],
+      testCase "Display an empty party" $ do
+        let state = initialState{partyOpen = True}
+            drawing = rows state
+        assertViewport state
+        assertBool "Expected a zero count, empty-party message and close hint" $
+          map Text.stripEnd (take 3 drawing) == ["Party — 0 / 6", "", "Your party is empty"]
+            && Text.stripEnd (last drawing) == "Esc: Close",
+      testCase "Open visibly with p and restore the overworld with p or Escape" $
+        forM_ [Input.Character 'p', Input.Escape] $ \closeInput ->
+          let (opened, _) = Engine.step npcState (Input.Character 'p')
+              (closed, _) = Engine.step opened closeInput
+           in assertBool "Expected the party screen on opening and the original overworld frame on closing" $
+                case rows opened of
+                  heading : _ ->
+                    Text.isPrefixOf "Party — " heading
+                      && TUI.renderFrame opened /= TUI.renderFrame npcState
+                      && TUI.renderFrame closed == TUI.renderFrame npcState
+                  [] -> False,
+      testCase "Wrap long Unicode species names within the viewport" $ do
+        let name = Text.replicate columns "界" <> "e\x0301\ESC\r"
+            state = initialState{party = Party [Critter 7 5 20 name], partyOpen = True}
+            drawing = Text.concat (rows state)
+        assertViewport state
+        assertBool "Expected wide characters and combining marks to survive wrapping, with terminal controls removed" $
+          Text.isInfixOf "界" drawing
+            && Text.isInfixOf "e\x0301" drawing
+            && not (Text.any (\value -> value == '\ESC' || value == '\r') drawing)
+    ]
+  where
+    assertViewport state =
+      let frame = TUI.renderFrame state
+       in assertBool "Expected exactly the viewport's rows and terminal columns" $
+            length frame == TUI.height && all ((== columns) . sum . map Cell.columns) frame
+    columns = TUI.width * 2
+    rows = map (Text.concat . map glyph) . TUI.renderFrame
+
 partyTests :: TestTree
 partyTests =
   testGroup
@@ -418,7 +485,7 @@ partyViewTests =
     "Party view"
     [ testCase "Block gameplay through inputs and direct commands while open" $ do
         let opened = npcState{partyOpen = True}
-        forM_ [Input.Down, Input.Enter, Input.Left, Input.Right, Input.Up, Input.Character 'p', Input.Character 'x'] $ \input ->
+        forM_ ([Input.Down, Input.Enter, Input.Left, Input.Right, Input.Up, Input.Character 'x'] <> map Input.Character "hjkl") $ \input ->
           assertBool "Expected gameplay inputs to leave the party view and world unchanged" $
             Engine.commandFor opened input == Nothing && Engine.step opened input == (opened, [])
         forM_ [Command.AdvanceConversation, Command.ConfirmSelection, Command.EndConversation, Command.Interact, Command.OpenParty, Command.SelectNext, Command.SelectPrevious, Command.Walk East, Command.Walk North, Command.Walk South, Command.Walk West] $ \command ->
@@ -436,19 +503,20 @@ partyViewTests =
           let encoded = "{" <> layout <> ",\"partyOpen\":true,\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
            in assertBool "Expected both game formats to preserve the open view" $
                 fmap partyOpen (Aeson.eitherDecode @GameState encoded) == Right True,
-      testCase "Open with p and close with Escape" $
-        forM_ [initialState, npcState] $ \starting ->
-          let (opened, started) = Engine.step starting (Input.Character 'p')
-              (closed, ended) = Engine.step opened Input.Escape
-           in assertBool "Expected only the view state to change, with exploration restored on closing" $
-                Engine.commandFor starting (Input.Character 'p') == Just Command.OpenParty
-                  && opened == starting{partyOpen = True}
-                  && started == [Event.PartyOpened]
-                  && Engine.commandFor opened Input.Escape == Just Command.CloseMenu
-                  && closed == starting
-                  && ended == [Event.PartyClosed]
-                  && Engine.eventsFor closed Command.CloseMenu == []
-                  && Engine.step closed Input.Up == Engine.step starting Input.Up,
+      testCase "Open with p and close with p or Escape" $
+        forM_ [Input.Character 'p', Input.Escape] $ \closeInput ->
+          forM_ [initialState, npcState] $ \starting ->
+            let (opened, started) = Engine.step starting (Input.Character 'p')
+                (closed, ended) = Engine.step opened closeInput
+             in assertBool "Expected only the view state to change, with exploration restored on closing" $
+                  Engine.commandFor starting (Input.Character 'p') == Just Command.OpenParty
+                    && opened == starting{partyOpen = True}
+                    && started == [Event.PartyOpened]
+                    && Engine.commandFor opened closeInput == Just Command.CloseMenu
+                    && closed == starting
+                    && ended == [Event.PartyClosed]
+                    && Engine.eventsFor closed Command.CloseMenu == []
+                    && Engine.step closed Input.Up == Engine.step starting Input.Up,
       testCase "Replay view facts without checking their preconditions" $ do
         let talking = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}
             opened = Engine.applyEvent talking Event.PartyOpened
@@ -684,7 +752,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [conversationTests, critterTests, engineTests, eventTests, inputTests, partyTests, partyViewTests, saveTests, stateTests, tuiTests, warpTests]
+tests = testGroup "Critters" [conversationTests, critterTests, engineTests, eventTests, inputTests, partyRenderTests, partyTests, partyViewTests, saveTests, stateTests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =
@@ -780,7 +848,7 @@ tuiTests =
         $ dialogueRows "First line\r\nSecond line\nHidden third line"
           == [styled (Text.justifyLeft columns ' ' "First line"), styled (Text.justifyLeft columns ' ' "Second line")],
       testCase "Skip redraws for identical frames" $
-        forM_ [npcState, npcState{conversation = Just (Conversation 0 (NpcId "guide"))}] $ \state ->
+        forM_ [initialState{partyOpen = True}, npcState, npcState{conversation = Just (Conversation 0 (NpcId "guide"))}] $ \state ->
           let rows = TUI.renderFrame state
            in assertBool "Expected unchanged frames to produce no terminal output" $
                 Text.null (TUI.redraw rows rows),
