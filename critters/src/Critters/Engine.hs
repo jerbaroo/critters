@@ -9,6 +9,7 @@ import Critters.Input (Input)
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
 import Critters.State.ActiveInteraction (ActiveInteraction (..))
+import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.Choice qualified as Choice
 import Critters.State.Condition (Condition (..))
 import Critters.State.Conversation (Conversation (..))
@@ -27,7 +28,7 @@ import Critters.State.Warp qualified as Warp
 import Critters.State.World (World (..), tileAt)
 import Data.List (find)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 
 advanceInteraction :: GameState -> ActiveInteraction -> [Event]
@@ -47,23 +48,30 @@ advanceInteraction state active
 -- | Apply an established fact without checking command rules again.
 applyEvent :: GameState -> Event -> GameState
 applyEvent state = \case
+  Event.BattleChanged update -> state{battle = Just (updateBattle update), inventory = fromMaybe (inventory state) (updateInventory update), party = fromMaybe (party state) (updateParty update), randomSeed = fromMaybe (randomSeed state) (updateSeed update)}
+  Event.BattleEnded -> state{battle = Nothing}
+  Event.BattleStarted active -> state{battle = Just active}
   Event.ConversationAdvanced index -> state{conversation = fmap (\active -> active{lineIndex = index}) (conversation state)}
   Event.ConversationEnded -> state{conversation = Nothing}
   Event.ConversationStarted identifier -> state{conversation = Just (Conversation 0 identifier)}
   Event.CritterReceived critter -> state{party = Party (members (party state) <> [critter])}
+  Event.EncounterAdvanced count -> state{encounterSteps = count}
   Event.FlagChanged identifier value -> state{flags = Map.insert identifier value (flags state)}
   Event.InteractionAdvanced index -> state{activeInteraction = fmap (\active -> active{activeDialogueIndex = index}) (activeInteraction state)}
   Event.InteractionChoiceOpened -> state{activeInteraction = fmap (\active -> active{activeSelectedChoice = Just 0}) (activeInteraction state)}
   Event.InteractionChoiceSelected index -> state{activeInteraction = fmap (\active -> active{activeSelectedChoice = Just index}) (activeInteraction state)}
   Event.InteractionEnded -> state{activeInteraction = Nothing}
   Event.InteractionStarted active -> state{activeInteraction = Just active}
+  Event.InventoryChanged identifier count -> state{inventory = Map.insert identifier count (inventory state)}
   Event.ObjectRemoved identifier -> state{objects = Map.delete identifier (objects state)}
+  Event.PartyChanged value -> state{party = value}
   Event.PartyClosed -> state{partyOpen = False}
   Event.PartyOpened -> state{partyOpen = True}
   Event.PlayerMoved destination -> state{playerPosition = destination}
   Event.PlayerTurned direction -> state{playerDirection = direction}
   Event.PlayerWarped destination ->
     state{conversation = Nothing, playerMap = Location.mapId destination, playerPosition = Location.position destination}
+  Event.RandomAdvanced seed -> state{randomSeed = seed}
 
 canStand :: GameState -> Position -> Bool
 canStand state destination =

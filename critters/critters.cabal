@@ -89,15 +89,24 @@ library
         Critters.State
         Critters.State.ActiveInteraction
         Critters.State.Affliction
+        Critters.State.Battle
+        Critters.State.BattleDefinition
+        Critters.State.BattleOutcome
+        Critters.State.BattlePhase
         Critters.State.BattleProfile
+        Critters.State.BattleUpdate
         Critters.State.Choice
+        Critters.State.CombatConfig
         Critters.State.Condition
         Critters.State.Conversation
         Critters.State.Critter
         Critters.State.Effect
+        Critters.State.Encounter
+        Critters.State.EncounterEntry
         Critters.State.FlagId
         Critters.State.GameState
         Critters.State.Interaction
+        Critters.State.Item
         Critters.State.Location
         Critters.State.MapId
         Critters.State.Move
@@ -111,6 +120,7 @@ library
         Critters.State.Position
         Critters.State.Rules
         Critters.State.Species
+        Critters.State.StatusDefinition
         Critters.State.Tile
         Critters.State.Warp
         Critters.State.World

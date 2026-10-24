@@ -1,0 +1,75 @@
+module Critters.State.Battle (Battle (..), defaultBattle) where
+
+import Autodocodec qualified as Codec
+import Autodocodec (Autodocodec (..), HasCodec)
+import Critters.State.BattleDefinition (BattleDefinition, defaultDefinition)
+import Critters.State.BattleOutcome (BattleOutcome)
+import Critters.State.BattlePhase (BattlePhase (ActionMenu))
+import Critters.State.CombatConfig (CombatConfig, defaultCombat)
+import Critters.State.Critter (Critter)
+import Data.Aeson qualified as Aeson
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Text (Text)
+
+data Battle = Battle
+  { battleActiveOpponent :: Int,
+    battleActivePlayer :: Int,
+    battleConfig :: CombatConfig,
+    battleDefinition :: BattleDefinition,
+    battleEnemyStages :: Map Text Int,
+    battleEscapeAttempts :: Int,
+    battleMessages :: [Text],
+    battleOpponentParty :: [Critter],
+    battleOutcome :: Maybe BattleOutcome,
+    battleParticipants :: [Int],
+    battlePhase :: BattlePhase,
+    battlePlayerStages :: Map Text Int,
+    battleSelected :: Int,
+    battleSelectedItem :: Maybe Text,
+    battleTurn :: Int
+  }
+  deriving stock (Eq)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Battle)
+
+defaultBattle :: Battle
+defaultBattle = Battle
+  { battleActiveOpponent = 0,
+    battleActivePlayer = 0,
+    battleConfig = defaultCombat,
+    battleDefinition = defaultDefinition,
+    battleEnemyStages = Map.empty,
+    battleEscapeAttempts = 0,
+    battleMessages = [],
+    battleOpponentParty = [],
+    battleOutcome = Nothing,
+    battleParticipants = [],
+    battlePhase = ActionMenu,
+    battlePlayerStages = Map.empty,
+    battleSelected = 0,
+    battleSelectedItem = Nothing,
+    battleTurn = 0
+  }
+
+instance HasCodec Battle where
+  codec = Codec.bimapCodec validate id $ Codec.object "Battle" $ Battle
+    <$> Codec.optionalFieldWithOmittedDefault "activeOpponent" (0) "Active opposing party index." Codec..= battleActiveOpponent
+    <*> Codec.optionalFieldWithOmittedDefault "activePlayer" (0) "Active player party index." Codec..= battleActivePlayer
+    <*> Codec.optionalFieldWithOmittedDefault "config" (defaultCombat) "Configuration snapshot selected at entry." Codec..= battleConfig
+    <*> Codec.optionalFieldWithOmittedDefault "definition" (defaultDefinition) "Battle definition snapshot." Codec..= battleDefinition
+    <*> Codec.optionalFieldWithOmittedDefault "enemyStages" (Map.empty) "Temporary opposing stat stages." Codec..= battleEnemyStages
+    <*> Codec.optionalFieldWithOmittedDefault "escapeAttempts" (0) "Failed escape attempts." Codec..= battleEscapeAttempts
+    <*> Codec.optionalFieldWithOmittedDefault "messages" ([]) "Messages from the most recent action." Codec..= battleMessages
+    <*> Codec.optionalFieldWithOmittedDefault "opponentParty" ([]) "Current opposing party." Codec..= battleOpponentParty
+    <*> Codec.optionalFieldOrNull "outcome" "Resolved outcome awaiting acknowledgement." Codec..= battleOutcome
+    <*> Codec.optionalFieldWithOmittedDefault "participants" ([]) "Player party indices that have participated." Codec..= battleParticipants
+    <*> Codec.optionalFieldWithOmittedDefault "phase" (ActionMenu) "Current battle menu." Codec..= battlePhase
+    <*> Codec.optionalFieldWithOmittedDefault "playerStages" (Map.empty) "Temporary player stat stages." Codec..= battlePlayerStages
+    <*> Codec.optionalFieldWithOmittedDefault "selected" (0) "Selected menu entry." Codec..= battleSelected
+    <*> Codec.optionalFieldOrNull "selectedItem" "Item awaiting a party target." Codec..= battleSelectedItem
+    <*> Codec.optionalFieldWithOmittedDefault "turn" (0) "Completed turns." Codec..= battleTurn
+    where
+      validate value
+        | battleActiveOpponent value < 0 || battleActiveOpponent value >= length (battleOpponentParty value) = Left "Active opponent index is outside its party."
+        | battleActivePlayer value < 0 || battleEscapeAttempts value < 0 || battleSelected value < 0 || battleTurn value < 0 || any (< 0) (battleParticipants value) = Left "Battle indices and counts must not be negative."
+        | otherwise = Right value

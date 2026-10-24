@@ -1,13 +1,21 @@
 module BattleTests (tests) where
 
+import Critters.Engine qualified as Engine
+import Critters.Event qualified as Event
 import Critters.Formula (Formula (..))
 import Critters.Formula qualified as Formula
 import Critters.State.Affliction (Affliction (..))
+import Critters.State.Battle (Battle (..), defaultBattle)
+import Critters.State.BattleDefinition (BattleDefinition (..), defaultDefinition)
 import Critters.State.BattleProfile (BattleProfile (..), defaultProfile)
+import Critters.State.BattleUpdate (BattleUpdate (..))
+import Critters.State.CombatConfig (CombatConfig (..), defaultCombat)
 import Critters.State.Critter (Critter (..), basicCritter)
+import Critters.State.GameState (GameState (..), initialState)
 import Critters.State.Move (Move (..), defaultMove)
 import Critters.State.MoveEffect (MoveEffect (..), Target (..))
 import Critters.State.MoveId (MoveId (..))
+import Critters.State.Party (Party (..))
 import Critters.State.Rules (Rules (..), defaultRules)
 import Critters.State.Species (Species (..), defaultSpecies)
 import Data.Aeson qualified as Aeson
@@ -31,9 +39,30 @@ profileTests = testGroup "Combat profiles"
       assertBool "Expected positive species stats" (isLeft (Aeson.eitherDecode @Species "{\"stats\":{\"attack\":0}}"))
   ]
 
+snapshotTests :: TestTree
+snapshotTests = testGroup "Battle snapshots"
+  [ testCase "Round trip a configured battle and complete game state" $
+      let critter = basicCritter 10 2 10 "leafling"
+          definition = defaultDefinition{definitionOpponents = [critter]}
+          config = defaultCombat{configSpecies = Map.singleton "leafling" defaultSpecies, configBattles = Map.singleton "practice" definition}
+          active = defaultBattle{battleConfig = config, battleDefinition = definition, battleOpponentParty = [critter], battleParticipants = [0]}
+          state = initialState{battle = Just active, combat = config, party = Party [critter]}
+       in assertBool "Expected the battle configuration snapshot and phase to persist" (Aeson.eitherDecode (Aeson.encode state) == Right state),
+    testCase "Replay facts without validating commands or resetting other state" $
+      let critter = basicCritter 10 2 10 "leafling"
+          active = defaultBattle{battleOpponentParty = [critter]}
+          starting = initialState{party = Party [critter], partyOpen = True}
+          update = BattleUpdate active (Just (Map.singleton "tonic" 2)) Nothing (Just 42)
+          result = Engine.applyEvent starting (Event.BattleChanged update)
+       in assertBool "Expected exactly the recorded fields to change" (result == starting{battle = Just active, inventory = Map.singleton "tonic" 2, randomSeed = 42} && Aeson.eitherDecode (Aeson.encode (Event.BattleChanged update)) == Right (Event.BattleChanged update)),
+    testCase "Reject dangling species, move and encounter references" $ do
+      assertBool "Expected a learnset reference to exist" (isLeft (Aeson.eitherDecode @CombatConfig "{\"species\":{\"leafling\":{\"learnset\":{\"1\":[\"missing\"]}}}}"))
+      assertBool "Expected nonnegative inventory counts" (isLeft (Aeson.eitherDecode @GameState "{\"version\":1,\"maps\":{},\"playerPosition\":{\"x\":0,\"y\":0},\"inventory\":{\"tonic\":-1}}"))
+  ]
+
 tests :: TestTree
 tests = testGroup "Battle"
-  [ profileTests,
+  [ profileTests, snapshotTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)
