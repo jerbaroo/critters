@@ -11,7 +11,7 @@ import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Save qualified as Save
-import Critters.State (Conversation (..), Critter (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
+import Critters.State (Conversation (..), Critter (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
@@ -347,6 +347,68 @@ npcState =
       playerDirection = East
     }
 
+partyTests :: TestTree
+partyTests =
+  testGroup
+    "Party"
+    [ testCase "Accept parties up to the game limit, including more than six members" $
+        forM_ [1, 3, 9] $ \limit ->
+          forM_ [[], replicate limit critter] $ \critters ->
+            assertRoundTrip initialState{maxPartySize = limit, party = Party critters},
+      testCase "Default an omitted party in current and legacy game files"
+        $ forM_
+          [ "{\"maps\":{\"overworld\":{\"tiles\":[]}},\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}",
+            "{\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"world\":{\"tiles\":[]}}"
+          ]
+        $ \encoded ->
+          assertBool "Expected older files to start with an empty party and a limit of six" $
+            fmap (\state -> (party state, maxPartySize state)) (Aeson.eitherDecode @GameState encoded) == Right (Party [], 6),
+      testCase "Default omitted members to an empty party"
+        $ assertBool "Expected no members"
+        $ Aeson.eitherDecode @Party "{}" == Right (Party []),
+      testCase "Load an independently written fixture and preserve member order"
+        $ assertBool "Expected two distinct critters of the same species in the written order"
+        $ Aeson.eitherDecode fixture == Right configured,
+      testCase "Load the game limit in current and legacy files" $
+        forM_ ["\"maps\":{\"overworld\":{\"tiles\":[]}}", "\"world\":{\"tiles\":[]}"] $ \layout ->
+          let encoded = "{" <> layout <> ",\"maxPartySize\":2,\"party\":" <> fixture <> ",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
+           in assertBool "Expected the configured game limit and a party at that limit" $
+                fmap (\state -> (party state, maxPartySize state)) (Aeson.eitherDecode @GameState encoded) == Right (configured, 2),
+      testCase "Load a configured party from a complete game fixture" $
+        let encoded = "{\"maps\":{\"overworld\":{\"tiles\":[]}},\"maxPartySize\":6,\"party\":" <> fixture <> ",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
+         in assertBool "Expected the configured party and game limit to load together" $
+              fmap (\state -> (party state, maxPartySize state)) (Aeson.eitherDecode @GameState encoded) == Right (configured, 6),
+      testCase "Preserve the party through movement and event replay" $
+        let starting = initialState{maxPartySize = 2, party = configured}
+            (moved, events) = Engine.step starting Input.Right
+         in assertBool "Expected movement facts and replay to retain all party data" $
+              not (null events)
+                && maxPartySize moved == 2
+                && party moved == configured
+                && Save.apply starting events == moved,
+      testCase "Reject game limits that are not positive integers" $
+        forM_ ["\"maps\":{\"overworld\":{\"tiles\":[]}}", "\"world\":{\"tiles\":[]}"] $ \layout ->
+          forM_ ["-1", "0", "1.5", "null", "\"six\""] $ \invalid ->
+            let encoded = "{" <> layout <> ",\"maxPartySize\":" <> invalid <> ",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
+             in assertBool "Expected invalid game limits to fail loading" (isLeft (Aeson.eitherDecode @GameState encoded)),
+      testCase "Reject invalid critters inside a party"
+        $ assertBool "Expected critter validation to apply to party members"
+        $ isLeft (Aeson.eitherDecode @Party (Aeson.encode (Party [critter{hitPoints = -1}]))),
+      testCase "Reject parties above the game limit in current and legacy files" $
+        forM_ ["\"maps\":{\"overworld\":{\"tiles\":[]}}", "\"world\":{\"tiles\":[]}"] $ \layout ->
+          let encoded = "{" <> layout <> ",\"maxPartySize\":1,\"party\":" <> fixture <> ",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
+           in assertBool "Expected a party larger than the game limit to fail loading" (isLeft (Aeson.eitherDecode @GameState encoded)),
+      testCase "Round trip game state with a configured party" $
+        assertRoundTrip initialState{maxPartySize = 2, party = configured},
+      testCase "Save the expected JSON structure"
+        $ assertBool "Expected only the ordered members in the party JSON"
+        $ Aeson.eitherDecode fixture == Right (Aeson.toJSON configured)
+    ]
+  where
+    configured = Party [critter, critter{hitPoints = 7}]
+    critter = Critter 20 5 20 "leafling"
+    fixture = "{\"members\":[{\"hitPoints\":20,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"},{\"hitPoints\":7,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"}]}"
+
 saveTests :: TestTree
 saveTests =
   testGroup
@@ -561,7 +623,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [conversationTests, critterTests, engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests, warpTests]
+tests = testGroup "Critters" [conversationTests, critterTests, engineTests, eventTests, inputTests, partyTests, saveTests, stateTests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =

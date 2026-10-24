@@ -7,6 +7,7 @@ module Critters.State
     module Critters.State.MapId,
     module Critters.State.Npc,
     module Critters.State.NpcId,
+    module Critters.State.Party,
     module Critters.State.Position,
     module Critters.State.Tile,
     module Critters.State.Warp,
@@ -21,6 +22,7 @@ import Critters.State.Location (Location (..))
 import Critters.State.MapId (MapId (..))
 import Critters.State.Npc (Npc (..))
 import Critters.State.NpcId (NpcId (..))
+import Critters.State.Party (Party (..), empty)
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
 import Critters.State.Warp (Warp (..))

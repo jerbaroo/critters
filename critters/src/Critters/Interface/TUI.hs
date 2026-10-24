@@ -24,10 +24,10 @@ import Witch (from)
 
 -- | Editable viewport dimensions, in tiles. Each tile uses two terminal columns.
 height :: Int
-height = 32
+height = 24
 
 width :: Int
-width = 64
+width = 32
 
 input :: FilePath -> IO Input
 input logPath = do

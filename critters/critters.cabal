@@ -91,6 +91,7 @@ library
         Critters.State.MapId
         Critters.State.Npc
         Critters.State.NpcId
+        Critters.State.Party
         Critters.State.Position
         Critters.State.Tile
         Critters.State.Warp
