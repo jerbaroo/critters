@@ -82,6 +82,7 @@ library
         Critters.Interface.TUI.Cell
         Critters.Interface.TUI.Keyboard
         Critters.InterfaceType
+        Critters.Number
         Critters.Pretty
         Critters.Run
         Critters.Save
@@ -108,6 +109,7 @@ library
         Critters.State.ObjectId
         Critters.State.Party
         Critters.State.Position
+        Critters.State.Rules
         Critters.State.Species
         Critters.State.Tile
         Critters.State.Warp

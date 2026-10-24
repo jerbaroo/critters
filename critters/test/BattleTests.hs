@@ -8,6 +8,7 @@ import Critters.State.Critter (Critter (..), basicCritter)
 import Critters.State.Move (Move (..), defaultMove)
 import Critters.State.MoveEffect (MoveEffect (..), Target (..))
 import Critters.State.MoveId (MoveId (..))
+import Critters.State.Rules (Rules (..), defaultRules)
 import Critters.State.Species (Species (..), defaultSpecies)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
@@ -39,6 +40,12 @@ tests = testGroup "Battle"
           assertBool "Expected lazy conditionals and comparisons" (Formula.evaluate Map.empty (Formula "if(2 >= 1, 2^3 + ceil(1.2), 1/0)") == Right 10)
           assertBool "Expected a finite rule result" (isLeft (Formula.evaluate Map.empty (Formula "1/0")))
           assertBool "Expected unknown variables to fail" (isLeft (Formula.evaluate Map.empty (Formula "missing + 1"))),
+        testCase "Round trip a game-defined ruleset" $
+          let rules = defaultRules{rulesDamageFormula = Formula "floor(power + level)", rulesTieBreak = "random", rulesMaxKnownMoves = 6}
+           in assertBool "Expected rules to be game data" (Aeson.eitherDecode (Aeson.encode rules) == Right rules),
+        testCase "Reject unknown policy values and formula variables" $ do
+          assertBool "Expected policy validation" (isLeft (Aeson.eitherDecode @Rules "{\"tieBreak\":\"missing\"}"))
+          assertBool "Expected rule variable validation" (isLeft (Aeson.eitherDecode @Rules "{\"damageFormula\":\"missing + 1\"}")),
         testCase "Reject malformed expressions and invalid function arity" $ do
           assertBool "Expected malformed expressions to fail decoding" (isLeft (Aeson.eitherDecode @Formula "\"floor(\""))
           assertBool "Expected arity validation" (isLeft (Aeson.eitherDecode @Formula "\"min(1)\""))
