@@ -1,14 +1,19 @@
-module Critters.State.Critter (Critter (..)) where
+module Critters.State.Critter (basicCritter, Critter (..)) where
 
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
+import Critters.State.BattleProfile (BattleProfile, defaultProfile)
 import Data.Aeson qualified as Aeson
 import Data.Text (Text)
 import Data.Text qualified as Text
 
 -- | An individual critter. Species identifiers are chosen by the game author.
+basicCritter :: Int -> Int -> Int -> Text -> Critter
+basicCritter = Critter defaultProfile
+
 data Critter = Critter
-  { hitPoints :: Int,
+  { battleProfile :: BattleProfile,
+    hitPoints :: Int,
     level :: Int,
     maxHitPoints :: Int,
     species :: Text
@@ -21,7 +26,8 @@ instance HasCodec Critter where
     Codec.bimapCodec validate id
       $ Codec.object "Critter"
       $ Critter
-        <$> Codec.requiredField "hitPoints" "Current HP, from zero to maxHitPoints inclusive." Codec..= hitPoints
+        <$> Codec.optionalFieldWithOmittedDefault "battle" defaultProfile "Persistent battle data." Codec..= battleProfile
+        <*> Codec.requiredField "hitPoints" "Current HP, from zero to maxHitPoints inclusive." Codec..= hitPoints
         <*> Codec.requiredField "level" "The critter's positive level." Codec..= level
         <*> Codec.requiredField "maxHitPoints" "The critter's positive maximum HP." Codec..= maxHitPoints
         <*> Codec.requiredField "species" "A nonblank species identifier chosen by the game author." Codec..= species

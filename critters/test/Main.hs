@@ -12,7 +12,7 @@ import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Save qualified as Save
-import Critters.State (Condition (..), Conversation (..), Critter (..), FlagId (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
+import Critters.State (Condition (..), Conversation (..), Critter (..), FlagId (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), basicCritter, conversationText, initialState, tileAt, world)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
@@ -215,8 +215,8 @@ critterTests =
             isLeft (Aeson.eitherDecode @Critter (Aeson.encode critter{species = identifier})),
       testCase "Round trip author-defined species and numeric boundaries" $
         forM_
-          [ Critter 0 1 1 "leafling",
-            Critter maxBound maxBound maxBound "葉っぱ"
+          [ basicCritter 0 1 1 "leafling",
+            basicCritter maxBound maxBound maxBound "葉っぱ"
           ]
           assertRoundTrip,
       testCase "Save the expected JSON structure"
@@ -224,7 +224,7 @@ critterTests =
         $ Aeson.eitherDecode fixture == Right (Aeson.toJSON critter)
     ]
   where
-    critter = Critter 20 5 20 "leafling"
+    critter = basicCritter 20 5 20 "leafling"
     fixture = "{\"hitPoints\":20,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"}"
 
 engineTests :: TestTree
@@ -423,7 +423,7 @@ partyRenderTests =
   testGroup
     "Party rendering"
     [ testCase "Clip a large party while keeping the close hint visible" $ do
-        let critters = replicate TUI.height (Critter 1 1 1 "visible") <> [Critter 1 1 1 "hidden"]
+        let critters = replicate TUI.height (basicCritter 1 1 1 "visible") <> [basicCritter 1 1 1 "hidden"]
             state = initialState{maxPartySize = length critters, party = Party critters, partyOpen = True}
             drawing = rows state
         assertViewport state
@@ -435,7 +435,7 @@ partyRenderTests =
         let state =
               initialState
                 { maxPartySize = 9,
-                  party = Party [Critter 7 5 20 "leafling", Critter 0 2 12 "brookling"],
+                  party = Party [basicCritter 7 5 20 "leafling", basicCritter 0 2 12 "brookling"],
                   partyOpen = True
                 }
         assertViewport state
@@ -462,7 +462,7 @@ partyRenderTests =
                   [] -> False,
       testCase "Wrap long Unicode species names within the viewport" $ do
         let name = Text.replicate columns "界" <> "e\x0301\ESC\r"
-            state = initialState{party = Party [Critter 7 5 20 name], partyOpen = True}
+            state = initialState{party = Party [basicCritter 7 5 20 name], partyOpen = True}
             drawing = Text.concat (rows state)
         assertViewport state
         assertBool "Expected wide characters and combining marks to survive wrapping, with terminal controls removed" $
@@ -537,7 +537,7 @@ partyTests =
     ]
   where
     configured = Party [critter, critter{hitPoints = 7}]
-    critter = Critter 20 5 20 "leafling"
+    critter = basicCritter 20 5 20 "leafling"
     fixture = "{\"members\":[{\"hitPoints\":20,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"},{\"hitPoints\":7,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"}]}"
 
 partyViewTests :: TestTree

@@ -10,7 +10,7 @@ import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Save qualified as Save
-import Critters.State (ActiveInteraction (..), Choice (..), Condition (..), Critter (..), Effect (..), FlagId (..), GameState (..), Interaction (..), Location (..), MapId (..), Npc (..), NpcId (..), Object (..), ObjectId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), initialState, interactionText, objectAt)
+import Critters.State (ActiveInteraction (..), Choice (..), Condition (..), Critter (..), Effect (..), FlagId (..), GameState (..), Interaction (..), Location (..), MapId (..), Npc (..), NpcId (..), Object (..), ObjectId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), basicCritter, initialState, interactionText, objectAt)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
@@ -68,7 +68,7 @@ codecTests =
     ]
 
 critter :: Critter
-critter = Critter 8 2 10 "leafling"
+critter = basicCritter 8 2 10 "leafling"
 
 effectTests :: TestTree
 effectTests =
@@ -118,7 +118,7 @@ exampleState =
               [ Interaction [] [Flag (FlagId "lab.critter-claimed") True] ["You have already chosen your companion."] [],
                 Interaction [] [Flag (FlagId "guide.offer-made") False] ["These belong to Guide. You should ask him first."] [],
                 Interaction
-                  [Choice [GiveCritter (Critter 20 5 20 name), RemoveObject identifier, SetFlag (FlagId "lab.critter-claimed") True] "Yes", Choice [] "No"]
+                  [Choice [GiveCritter (basicCritter 20 5 20 name), RemoveObject identifier, SetFlag (FlagId "lab.critter-claimed") True] "Yes", Choice [] "No"]
                   []
                   ["This capsule contains " <> Text.toTitle name <> ". Choose it?"]
                   []
@@ -138,7 +138,7 @@ exampleTests =
               (finished, history) = play starting inputs
               identifier = ObjectId ("lab-" <> name)
           assertBool "Expected the selected critter, its removed capsule, both story flags, and a closed interaction" $
-            members (party finished) == [Critter 20 5 20 name]
+            members (party finished) == [basicCritter 20 5 20 name]
               && not (Map.member identifier (objects finished))
               && Map.size (objects finished) == 2
               && Map.lookup (FlagId "guide.offer-made") (flags finished) == Just True
