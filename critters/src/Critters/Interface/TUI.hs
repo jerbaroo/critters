@@ -1,12 +1,18 @@
 module Critters.Interface.TUI (height, input, output, redraw, render, renderFrame, width, writeLog) where
 
 import Control.Applicative ((<|>))
+import Critters.Battle.Common qualified as BattleCommon
+import Critters.Battle.Menu qualified as BattleMenu
 import Critters.Input (Input)
 import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Interface.TUI.Keyboard qualified as Keyboard
 import Critters.State.ActiveInteraction (ActiveInteraction (..))
+import Critters.State.Affliction qualified as Affliction
+import Critters.State.Battle qualified as Battle
+import Critters.State.BattleDefinition qualified as Definition
+import Critters.State.BattleProfile qualified as Profile
 import Critters.State.Choice qualified as Choice
 import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState (..), conversationText, interactionText, npcAt, objectAt, world)
@@ -68,6 +74,26 @@ redraw previous rows =
 render :: GameState -> Text
 render = Text.intercalate "\n" . map renderRow . renderFrame
 
+renderBattle :: GameState -> [[Cell]]
+renderBattle state = case BattleCommon.contextFor state of
+  Nothing -> renderText height ""
+  Just context ->
+    renderText 6 (Text.intercalate "\n" ["Battle — " <> Definition.definitionName (Battle.battleDefinition active), "", description "Opponent" BattleCommon.Enemy context, description "You" BattleCommon.Player context, "", ""])
+      <> renderText 5 (Text.intercalate "\n" (reverse (take 5 (reverse (Battle.battleMessages active)))))
+      <> renderText 1 "Choose:"
+      <> concatMap (renderText 1) (take menuHeight (drop offset choices <> repeat ""))
+      <> renderText 1 "↑/↓ j/k: Select  Enter: Confirm  Esc: Back  q: Quit"
+    where
+      active = BattleCommon.contextBattle context
+      choices = [(if index == Battle.battleSelected active then "> " else "  ") <> label | (index, (label, _)) <- zip [0 ..] (BattleMenu.entries state)]
+      menuHeight = height - 13
+      offset = max 0 (Battle.battleSelected active - menuHeight + 1)
+  where
+    description label side context = case BattleCommon.active side context of
+      Nothing -> label <> ": —"
+      Just critter -> label <> ": " <> Critter.species critter <> "  Lv " <> number (Critter.level critter) <> "  HP " <> number (Critter.hitPoints critter) <> "/" <> number (Critter.maxHitPoints critter) <> maybe "" (\status -> "  [" <> Affliction.afflictionStatus status <> "]") (Profile.profileStatus (Critter.battleProfile critter))
+    number value = from (toLazyText (decimal value))
+
 renderChoices :: ActiveInteraction -> [[Cell]]
 renderChoices active =
   renderText (height - 1) (Text.intercalate "\n" (question : "" : entries))
@@ -90,6 +116,7 @@ renderConversation = renderText 2
 renderFrame :: GameState -> [[Cell]]
 renderFrame state
   | partyOpen state = renderParty state
+  | isJust (battle state) = renderBattle state
   | Just active <- activeInteraction state, isJust (activeSelectedChoice active) = renderChoices active
   | otherwise = case interactionText state <|> conversationText state of
       Just message -> take (height - 2) rows <> renderConversation message

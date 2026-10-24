@@ -10,6 +10,8 @@ import Critters.Formula (Formula (..))
 import Critters.Formula qualified as Formula
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (East))
+import Critters.Interface.TUI qualified as TUI
+import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.State.Affliction (Affliction (..))
 import Critters.State.Battle (Battle (..), defaultBattle)
 import Critters.State.BattleDefinition (BattleDefinition (..), defaultDefinition)
@@ -32,6 +34,7 @@ import Critters.State.Species (Species (..), defaultSpecies)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
@@ -112,7 +115,7 @@ start state = either (const state) (\active -> state{battle = Just active}) (Bat
 
 tests :: TestTree
 tests = testGroup "Battle"
-  [ lifecycleTests, profileTests, snapshotTests, turnTests,
+  [ lifecycleTests, profileTests, snapshotTests, turnTests, viewTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)
@@ -172,4 +175,19 @@ turnTests = testGroup "Turns"
           (back, _) = Engine.step moves (Input.Character 'j')
           (actions, _) = Engine.step back Input.Enter
        in assertBool "Expected context-sensitive menu commands" (fmap battlePhase (battle moves) == Just MoveMenu && fmap battlePhase (battle actions) == Just ActionMenu && Engine.commandFor opened (Input.Character 'p') == Nothing)
+  ]
+
+viewTests :: TestTree
+viewTests = testGroup "Battle view"
+  [ testCase "Render both combatants and selectable moves in a fixed viewport" $
+      let opened = start fixture
+          (moves, _) = Engine.step opened Input.Enter
+          frame = TUI.renderFrame moves
+       in assertBool "Expected health, moves and controls within the terminal viewport" (length frame == TUI.height && all ((== TUI.width * 2) . sum . map Cell.columns) frame && all (\text -> Text.isInfixOf text (TUI.render moves)) ["Opponent: stonekin", "You: leafling", "HP 20/20", "> Basic strike", "Enter: Confirm"]),
+    testCase "Keep selected entries visible for large parties" $
+      let configured = fixture{maxPartySize = 40, party = Party (replicate 40 (basicCritter 10 2 10 "leafling"))}
+          opened = start configured
+          active = fmap (\current -> current{battlePhase = SwitchMenu, battleSelected = 35}) (battle opened)
+          drawing = TUI.render opened{battle = active}
+       in assertBool "Expected the selected entry and footer to remain visible" (Text.isInfixOf "> leafling" drawing && Text.isInfixOf "Esc: Back" drawing)
   ]
