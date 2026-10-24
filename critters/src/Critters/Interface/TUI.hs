@@ -110,7 +110,19 @@ renderChoices active =
 
 -- | Two padded text rows, clipped to the viewport's column width.
 renderConversation :: Text -> [[Cell]]
-renderConversation = renderText 2
+renderConversation = renderText 2 . wrapDialogue
+  where
+    columns = width * 2
+    textWidth = Text.foldl' (\total value -> total + max 0 (wcwidth value)) 0
+    addWord rows word = case rows of
+      [] -> [word]
+      line : previous
+        | textWidth line + 1 + textWidth word <= columns -> (line <> " " <> word) : previous
+        | otherwise -> word : line : previous
+    wrapLine line = case Text.words line of
+      [] -> [""]
+      wordsInLine -> reverse (foldl addWord [] wordsInLine)
+    wrapDialogue = Text.intercalate "\n" . concatMap wrapLine . Text.splitOn "\n"
 
 -- | A fixed viewport centered on the player, with north at the top and blanks
 -- for missing cells, including those outside the map.

@@ -915,6 +915,10 @@ tuiTests =
           let rows = TUI.renderFrame state
            in assertBool "Expected unchanged frames to produce no terminal output" $
                 Text.null (TUI.redraw rows rows),
+      testCase "Move whole words to the next dialogue row"
+        $ assertBool "Expected a word that does not fit to start on the next row"
+        $ dialogueRows (Text.replicate (columns - 3) "a" <> " word")
+          == [styled (Text.justifyLeft columns ' ' (Text.replicate (columns - 3) "a")), styled (Text.justifyLeft columns ' ' "word")],
       testCase "Wrap dialogue across two rows and clip overflow"
         $ assertBool "Expected full-width text rows and no third-row overflow"
         $ dialogueRows (Text.replicate columns "a" <> Text.replicate columns "b" <> "DISCARD")
