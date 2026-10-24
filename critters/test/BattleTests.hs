@@ -131,6 +131,23 @@ lifecycleTests = testGroup "Battle entry"
                in assertBool "Expected healing without losing learned progression" (inventory result == Map.singleton "tonic" 2 && party result == Party [injured{hitPoints = 20, battleProfile = (battleProfile injured){profileStatus = Nothing, profileRemainingUses = Map.empty}}])
   ]
 
+opponentTests :: TestTree
+opponentTests = testGroup "Opponent policies"
+  [ testCase "Choose the highest-scoring available move and respect its uses" $
+      let configured = armed "strongest"
+          opened = start configured
+          first = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
+          second = foldl' Engine.applyEvent first (Turn.resolveAction first (UseMove (MoveId "strike")))
+       in assertBool "Expected a stronger attack followed by an available weaker one" (map hitPoints (members (party first)) == [11] && map hitPoints (members (party second)) == [6]),
+    testCase "Random opponents make reproducible, recorded choices" $
+      let opened = start (armed "random")
+          facts = Turn.resolveAction opened (UseMove (MoveId "strike"))
+          result = foldl' Engine.applyEvent opened facts
+       in assertBool "Expected reproducibility and advanced random state" (facts == Turn.resolveAction opened (UseMove (MoveId "strike")) && randomSeed result /= randomSeed opened)
+  ]
+  where
+    armed policy = fixture{combat = (combat fixture){configMoves = Map.insert (MoveId "heavy") defaultMove{moveName = "Heavy strike", movePower = 9, moveMaxUses = 1} (configMoves (combat fixture)), configSpecies = Map.adjust (\definition -> definition{speciesLearnset = Map.singleton 1 [MoveId "strike", MoveId "heavy"]}) "stonekin" (configSpecies (combat fixture)), configBattles = Map.adjust (\definition -> definition{definitionOpponentPolicy = policy, definitionOpponents = [basicCritter 30 2 30 "stonekin"]}) "practice" (configBattles (combat fixture))}}
+
 profileTests :: TestTree
 profileTests = testGroup "Combat profiles"
   [ testCase "Preserve individual experience, moves, resources and status" $
@@ -233,7 +250,7 @@ start state = either (const state) (\active -> state{battle = Just active}) (Bat
 
 tests :: TestTree
 tests = testGroup "Battle"
-  [ encounterTests, itemTests, lifecycleTests, profileTests, progressionTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
+  [ encounterTests, itemTests, lifecycleTests, opponentTests, profileTests, progressionTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)

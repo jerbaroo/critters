@@ -69,10 +69,12 @@ library
     exposed-modules:
         Critters.Battle.Action
         Critters.Battle.Common
+        Critters.Battle.Damage
         Critters.Battle.Encounter
         Critters.Battle.Engine
         Critters.Battle.Items
         Critters.Battle.Menu
+        Critters.Battle.Opponent
         Critters.Battle.Progression
         Critters.Battle.Status
         Critters.Battle.Turn
