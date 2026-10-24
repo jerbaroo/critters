@@ -1,6 +1,8 @@
 module Main (main) where
 
 import Control.Monad (forM_)
+import Critters.Event qualified as Event
+import Critters.Input qualified as Input
 import Critters.State
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
@@ -12,11 +14,49 @@ assertRoundTrip value =
   assertBool "JSON should preserve the value" $
     Aeson.eitherDecode (Aeson.encode value) == Right value
 
+eventTests :: TestTree
+eventTests =
+  testGroup
+    "Event"
+    [ testCase "Load an independently written fixture"
+        $ assertBool "Expected the recorded destination"
+        $ Aeson.eitherDecode fixture == Right event,
+      testCase "Reject a missing position"
+        $ assertBool "Expected a parse error"
+        $ isLeft (Aeson.eitherDecode @Event.Event "{\"type\":\"player-moved\"}"),
+      testCase "Reject an unknown event type"
+        $ assertBool "Expected a parse error"
+        $ isLeft (Aeson.eitherDecode @Event.Event "{\"position\":{\"x\":2,\"y\":1},\"type\":\"walk\"}"),
+      testCase "Round trips" $
+        forM_ [Position (-1) 2, Position minBound maxBound] (assertRoundTrip . Event.PlayerMoved),
+      testCase "Save the expected JSON structure"
+        $ assertBool "Expected an event type and an absolute position"
+        $ Aeson.eitherDecode fixture == Right (Aeson.toJSON event)
+    ]
+  where
+    event = Event.PlayerMoved (Position 2 1)
+    fixture = "{\"position\":{\"x\":2,\"y\":1},\"type\":\"player-moved\"}"
+
+inputTests :: TestTree
+inputTests =
+  testGroup
+    "Input"
+    [ testCase "Reject multiple characters after trimming"
+        $ assertBool "Expected unknown input"
+        $ Input.parse "  xy  " == Nothing,
+      testCase "Strip surrounding whitespace" $
+        forM_ [(" \tdown\r\n", Input.Down), (" \t🐱\n ", Input.Character '🐱')] $
+          \(raw, expected) -> assertBool "Expected the trimmed control" (Input.parse raw == Just expected),
+      testCase "Whitespace-only input means Enter"
+        $ assertBool "Expected Enter"
+        $ Input.parse " \t\r\n " == Just Input.Enter
+    ]
+
 main :: IO ()
 main = defaultMain tests
 
-tests :: TestTree
-tests =
+stateTests :: TestTree
+stateTests =
   testGroup
     "State"
     [ testGroup
@@ -103,3 +143,6 @@ tests =
       "{\"playerPosition\":{\"x\":2,\"y\":1},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"wall\"],[\"water\",\"tall-grass\"]]}}"
     sampleWorld = World [[TallGrass, Wall], [Ground, Water]]
     state = GameState (Position 2 1) (World [[Ground, Wall], [Water, TallGrass]])
+
+tests :: TestTree
+tests = testGroup "Critters" [eventTests, inputTests, stateTests]

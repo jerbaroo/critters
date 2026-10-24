@@ -68,6 +68,7 @@ library
     exposed-modules:
         Critters.CLI
         Critters.Command
+        Critters.Event
         Critters.Input
         Critters.Input.Direction
         Critters.Pretty

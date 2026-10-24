@@ -13,7 +13,7 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
 import Options.Applicative qualified as Options
 import System.Exit (exitFailure, exitSuccess)
-import System.IO (isEOF, stderr)
+import System.IO (hFlush, isEOF, stderr, stdout)
 import System.IO.Error (ioeGetErrorString, tryIOError)
 
 die :: Text -> IO a
@@ -27,7 +27,9 @@ loadGameState gameFile =
     Right (Right state) -> pure state
 
 readInput :: IO Input
-readInput =
+readInput = do
+  TextIO.putStr "> "
+  hFlush stdout
   isEOF >>= \case
     True -> exitSuccess
     False ->

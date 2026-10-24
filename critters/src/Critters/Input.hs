@@ -17,7 +17,7 @@ data Input
 
 -- | Decode line-based controls without interpreting their game meaning.
 parse :: Text -> Maybe Input
-parse = \case
+parse input = case Text.strip input of
   "" -> Just Enter
   "down" -> Just Down
   "enter" -> Just Enter
