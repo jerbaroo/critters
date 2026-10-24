@@ -67,6 +67,8 @@ library
 
     -- Modules exported by the library.
     exposed-modules:
+        Critters.Battle.Common
+        Critters.Battle.Engine
         Critters.CLI
         Critters.CLI.Options
         Critters.Codec
@@ -138,6 +140,7 @@ library
         directory,
         optparse-applicative,
         text,
+        transformers,
         unordered-containers,
         wcwidth,
         witch

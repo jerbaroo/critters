@@ -6,13 +6,17 @@ import Critters.State.Critter (Critter)
 import Critters.State.FlagId (FlagId)
 import Critters.State.ObjectId (ObjectId)
 import Data.Aeson qualified as Aeson
+import Data.Text (Text)
 import Data.HashMap.Strict qualified as HashMap
 
 -- | An interaction's requested outcome, validated before events are produced.
 data Effect
   = GiveCritter Critter
+  | GiveItem Text Int
+  | HealParty
   | RemoveObject ObjectId
   | SetFlag FlagId Bool
+  | StartBattle Text
   deriving stock (Eq)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Effect)
 
@@ -22,16 +26,24 @@ instance HasCodec Effect where
       $ Codec.discriminatedUnionCodec "type" encode
       $ HashMap.fromList
         [ ("give-critter", ("GiveCritter", Codec.mapToDecoder GiveCritter given)),
+          ("give-item", ("GiveItem", Codec.mapToDecoder (uncurry GiveItem) item)),
+          ("heal-party", ("HealParty", pure HealParty)),
           ("remove-object", ("RemoveObject", Codec.mapToDecoder RemoveObject removed)),
-          ("set-flag", ("SetFlag", Codec.mapToDecoder (uncurry SetFlag) set))
+          ("set-flag", ("SetFlag", Codec.mapToDecoder (uncurry SetFlag) set)),
+          ("start-battle", ("StartBattle", Codec.mapToDecoder StartBattle started))
         ]
     where
       encode = \case
         GiveCritter critter -> ("give-critter", Codec.mapToEncoder critter given)
+        GiveItem identifier count -> ("give-item", Codec.mapToEncoder (identifier, count) item)
+        HealParty -> ("heal-party", pure ())
         RemoveObject identifier -> ("remove-object", Codec.mapToEncoder identifier removed)
         SetFlag identifier value -> ("set-flag", Codec.mapToEncoder (identifier, value) set)
+        StartBattle identifier -> ("start-battle", Codec.mapToEncoder identifier started)
       given :: JSONObjectCodec Critter
       given = Codec.requiredField "critter" "The critter to add to the party."
+      item :: JSONObjectCodec (Text, Int)
+      item = (,) <$> Codec.requiredField "item" "Game-defined item identifier." Codec..= fst <*> Codec.requiredField "count" "Positive item count." Codec..= snd
       removed :: JSONObjectCodec ObjectId
       removed = Codec.requiredField "objectId" "The world object to remove."
       set :: JSONObjectCodec (FlagId, Bool)
@@ -39,3 +51,5 @@ instance HasCodec Effect where
         (,)
           <$> Codec.requiredField "flag" "The game-defined flag identifier." Codec..= fst
           <*> Codec.requiredField "value" "The new flag value." Codec..= snd
+      started :: JSONObjectCodec Text
+      started = Codec.requiredField "battle" "Game-defined battle identifier."

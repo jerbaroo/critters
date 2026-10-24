@@ -1,9 +1,13 @@
 module BattleTests (tests) where
 
+import Critters.Battle.Engine qualified as BattleEngine
+import Critters.Command qualified as Command
 import Critters.Engine qualified as Engine
 import Critters.Event qualified as Event
 import Critters.Formula (Formula (..))
 import Critters.Formula qualified as Formula
+import Critters.Input qualified as Input
+import Critters.Input.Direction (Direction (East))
 import Critters.State.Affliction (Affliction (..))
 import Critters.State.Battle (Battle (..), defaultBattle)
 import Critters.State.BattleDefinition (BattleDefinition (..), defaultDefinition)
@@ -11,7 +15,10 @@ import Critters.State.BattleProfile (BattleProfile (..), defaultProfile)
 import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.CombatConfig (CombatConfig (..), defaultCombat)
 import Critters.State.Critter (Critter (..), basicCritter)
+import Critters.State.Effect (Effect (..))
+import Critters.State.FlagId (FlagId (..))
 import Critters.State.GameState (GameState (..), initialState)
+import Critters.State.Item (Item (..), defaultItem)
 import Critters.State.Move (Move (..), defaultMove)
 import Critters.State.MoveEffect (MoveEffect (..), Target (..))
 import Critters.State.MoveId (MoveId (..))
@@ -23,6 +30,42 @@ import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
+
+fixture :: GameState
+fixture = initialState
+  { combat = defaultCombat
+      { configBattles = Map.singleton "practice" defaultDefinition{definitionOpponents = [basicCritter 10 2 10 "stonekin"]},
+        configItems = Map.singleton "tonic" defaultItem{itemHealing = 5},
+        configMoves = Map.singleton (MoveId "strike") defaultMove{moveMaxUses = 5, movePower = 5},
+        configRules = defaultRules{rulesDamageFormula = Formula "power"},
+        configSpecies = Map.fromList [("leafling", definition), ("stonekin", definition)]
+      },
+    party = Party [basicCritter 20 2 20 "leafling"]
+  }
+  where
+    definition = defaultSpecies{speciesLearnset = Map.singleton 1 [MoveId "strike"]}
+
+lifecycleTests :: TestTree
+lifecycleTests = testGroup "Battle entry"
+  [ testCase "Start a configured battle and block exploration" $
+      case BattleEngine.beginBattle fixture "practice" of
+        Left _ -> assertBool "Expected a valid battle" False
+        Right active ->
+          let opened = Engine.applyEvent fixture (Event.BattleStarted active)
+           in assertBool "Expected a configuration snapshot and an isolated battle context" (battleConfig active == combat fixture && Engine.step opened Input.Right == (opened, []) && Engine.eventsFor opened (Command.Walk East) == []),
+    testCase "Reject empty, fainted or unknown parties before any effects commit" $ do
+      assertBool "Expected an empty party to be rejected" (isLeft (Engine.eventsForEffects fixture{party = Party []} [SetFlag (FlagId "test") True, StartBattle "practice"]))
+      assertBool "Expected a fainted party to be rejected" (isLeft (BattleEngine.beginBattle fixture{party = Party [basicCritter 0 2 20 "leafling"]} "practice"))
+      assertBool "Expected an unknown battle to be rejected" (isLeft (BattleEngine.beginBattle fixture "missing")),
+    testCase "Grant configured items and restore an individual profile" $
+      let injured = (basicCritter 0 2 20 "leafling"){battleProfile = defaultProfile{profileExperience = 12, profileStatus = Just (Affliction Nothing "slow"), profileRemainingUses = Map.singleton (MoveId "strike") 0}}
+          state = fixture{party = Party [injured]}
+       in case Engine.eventsForEffects state [GiveItem "tonic" 2, HealParty] of
+            Left _ -> assertBool "Expected valid recovery effects" False
+            Right events ->
+              let result = foldl' Engine.applyEvent state events
+               in assertBool "Expected healing without losing learned progression" (inventory result == Map.singleton "tonic" 2 && party result == Party [injured{hitPoints = 20, battleProfile = (battleProfile injured){profileStatus = Nothing, profileRemainingUses = Map.empty}}])
+  ]
 
 profileTests :: TestTree
 profileTests = testGroup "Combat profiles"
@@ -62,7 +105,7 @@ snapshotTests = testGroup "Battle snapshots"
 
 tests :: TestTree
 tests = testGroup "Battle"
-  [ profileTests, snapshotTests,
+  [ lifecycleTests, profileTests, snapshotTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)

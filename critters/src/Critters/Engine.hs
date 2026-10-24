@@ -2,6 +2,9 @@
 module Critters.Engine (applyEvent, chooseInteraction, commandFor, conditionHolds, eventsFor, eventsForEffects, step) where
 
 import Control.Monad (foldM)
+import Critters.Battle.Common qualified as BattleCommon
+import Critters.Battle.Engine qualified as BattleEngine
+import Critters.State.CombatConfig qualified as Config
 import Critters.Command (Command (..))
 import Critters.Event (Event)
 import Critters.Event qualified as Event
@@ -90,6 +93,7 @@ commandFor state input
       Input.Character 'p' -> Just CloseMenu
       Input.Escape -> Just CloseMenu
       _ -> Nothing
+  | isJust (battle state) = Nothing
   | Just active <- activeInteraction state = case activeSelectedChoice active of
       Just _ -> case input of
         Input.Character 'j' -> Just SelectNext
@@ -135,6 +139,7 @@ conditionHolds state (Flag identifier expected) = Map.findWithDefault False iden
 eventsFor :: GameState -> Command -> [Event]
 eventsFor state command
   | partyOpen state = [Event.PartyClosed | command == CloseMenu]
+  | isJust (battle state) = []
   | Just active <- activeInteraction state = interactionEvents state active command
   | otherwise = case command of
       AdvanceConversation -> case conversation state of
@@ -170,10 +175,15 @@ eventsForEffects state = fmap snd . foldM apply (state, [])
         Effect.GiveCritter critter
           | length (members (party current)) < maxPartySize current -> Right (Event.CritterReceived critter)
           | otherwise -> Left "Your party is full."
+        Effect.GiveItem identifier count
+          | count > 0 && Map.member identifier (Config.configItems (combat current)) && count <= maxBound - Map.findWithDefault 0 identifier (inventory current) -> Right (Event.InventoryChanged identifier (Map.findWithDefault 0 identifier (inventory current) + count))
+          | otherwise -> Left "That item or count is invalid."
+        Effect.HealParty -> Right (Event.PartyChanged (BattleCommon.healParty 1 (party current)))
         Effect.RemoveObject identifier
           | Map.member identifier (objects current) -> Right (Event.ObjectRemoved identifier)
           | otherwise -> Left "That object is no longer available."
         Effect.SetFlag identifier value -> Right (Event.FlagChanged identifier value)
+        Effect.StartBattle identifier -> Event.BattleStarted <$> BattleEngine.beginBattle current identifier
       pure (applyEvent current event, events <> [event])
 
 interactEvents :: GameState -> [Event]
