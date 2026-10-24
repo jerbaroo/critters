@@ -5,6 +5,7 @@ import Control.Monad (forM_)
 import Critters.Engine qualified as Engine
 import Critters.Event qualified as Event
 import Critters.Input qualified as Input
+import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI qualified as TUI
 import Critters.Save qualified as Save
 import Critters.State (GameState (..), Position (..), Tile (..), World (..), initialState, tileAt)
@@ -32,10 +33,26 @@ engineTests =
         $ Engine.applyEvent state (Event.PlayerMoved (Position (-4) 9))
           == state{playerPosition = Position (-4) 9},
       testCase "Block occupied ground and water without producing events" $
-        forM_ [House, Laboratory, Sign, Tree, Wall, Water] $ \tile ->
+        forM_ [Fence, Arena, House, Laboratory, Ledge South, Shop, Clinic, Rock, Sign, Tree, Wall, Water] $ \tile ->
           let current = withDestination tile
            in assertBool "Expected the original state and no movement fact" $
                 Engine.step current Input.Up == (current, []),
+      testCase "Cross ledges only in their direction" $
+        forM_ [East, North, South, West] $ \allowed ->
+          forM_
+            [ (East, Input.Right, Position 1 2, Position 3 2),
+              (North, Input.Up, Position 2 1, Position 2 3),
+              (South, Input.Down, Position 2 3, Position 2 1),
+              (West, Input.Left, Position 3 2, Position 1 2)
+            ]
+            $ \(direction, input, origin, destination) ->
+              let current = (withLedge allowed){playerPosition = origin}
+                  expected =
+                    if direction == allowed
+                      then (current{playerPosition = destination}, [Event.PlayerMoved destination])
+                      else (current, [])
+               in assertBool "Expected a single fact landing beyond the ledge only in its direction" $
+                    Engine.step current input == expected,
       testCase "Directions use the bottom-left coordinate system"
         $ forM_
           [ (Input.Down, Position 2 1),
@@ -47,20 +64,44 @@ engineTests =
           assertBool "Expected the input to produce and apply a movement fact" $
             Engine.step state input == (state{playerPosition = destination}, [Event.PlayerMoved destination]),
       testCase "Reject destinations outside the world or in missing cells" $ do
-        forM_ [World [], World [[Ground]]] $ \layout ->
+        forM_ [filledWorld [], filledWorld [[Ground]]] $ \layout ->
           forM_ [Input.Down, Input.Left, Input.Right, Input.Up] $ \input ->
             let current = GameState (Position 0 0) layout
              in assertBool "Expected no movement beyond the world" $
                   Engine.step current input == (current, [])
-        let ragged = GameState (Position 1 0) (World [[], [Ground, Ground]])
+        let ragged = GameState (Position 1 0) (filledWorld [[], [Ground, Ground]])
         assertBool "Expected a missing cell in a ragged row to block movement" $
-          Engine.step ragged Input.Up == (ragged, []),
+          Engine.step ragged Input.Up == (ragged, [])
+        let hole = GameState (Position 1 0) (World [[Just Ground, Nothing, Just Ground], replicate 3 (Just Ground)])
+        assertBool "Expected a missing cell within a row to block movement" $
+          Engine.step hole Input.Up == (hole, []),
+      testCase "Reject ledges with blocked or missing landings" $ do
+        forM_ (Nothing : map Just [Fence, Arena, House, Laboratory, Ledge South, Shop, Clinic, Rock, Sign, Tree, Wall, Water]) $ \landing ->
+          let current =
+                GameState (Position 1 2) $
+                  World
+                    [ replicate 3 (Just Ground),
+                      [Just Ground, Just (Ledge South), Just Ground],
+                      [Just Ground, landing, Just Ground]
+                    ]
+           in assertBool "Expected no jump into a blocked tile or missing cell" $
+                Engine.step current Input.Down == (current, [])
+        let edge = GameState (Position 0 1) (filledWorld [[Ground], [Ledge South]])
+        assertBool "Expected no jump beyond the world" $
+          Engine.step edge Input.Down == (edge, []),
       testCase "Replay history reproduces sequential input processing" $
         let (finalState, history) = foldl advance (state, []) [Input.Up, Input.Right, Input.Down]
          in assertBool "Expected each input to use the latest state, with replayable facts" $
               finalState == state{playerPosition = Position 3 2}
                 && history == map Event.PlayerMoved [Position 2 3, Position 3 3, Position 3 2]
                 && foldl Engine.applyEvent state history == finalState,
+      testCase "Replay ledge crossings as absolute movement facts" $
+        let current = withLedge South
+            (nextState, events) = Engine.step current Input.Down
+         in assertBool "Expected a two-cell crossing to replay through one recorded destination" $
+              nextState == current{playerPosition = Position 2 1}
+                && events == [Event.PlayerMoved (Position 2 1)]
+                && Save.apply current events == nextState,
       testCase "Unmapped and non-movement inputs leave state unchanged" $
         forM_ [Input.Character 'x', Input.Character 'q', Input.Enter, Input.Escape] $
           \input -> assertBool "Expected no state changes or events" (Engine.step state input == (state, [])),
@@ -75,8 +116,17 @@ engineTests =
     advance (current, history) input =
       let (next, events) = Engine.step current input
        in (next, history <> events)
-    state = GameState (Position 2 2) (World (replicate 5 (replicate 5 Ground)))
-    withDestination tile = GameState (Position 1 1) (World [[Ground, tile, Ground], replicate 3 Ground, replicate 3 Ground])
+    state = GameState (Position 2 2) (filledWorld (replicate 5 (replicate 5 Ground)))
+    withDestination tile = GameState (Position 1 1) (filledWorld [[Ground, tile, Ground], replicate 3 Ground, replicate 3 Ground])
+    withLedge direction =
+      GameState (Position 2 3) $
+        filledWorld
+          [ replicate 5 Ground,
+            replicate 5 Ground,
+            [Ground, Ground, Ledge direction, Ground, Ground],
+            replicate 5 Ground,
+            replicate 5 Ground
+          ]
 
 eventTests :: TestTree
 eventTests =
@@ -100,6 +150,9 @@ eventTests =
   where
     event = Event.PlayerMoved (Position 2 1)
     fixture = "{\"position\":{\"x\":2,\"y\":1},\"type\":\"player-moved\"}"
+
+filledWorld :: [[Tile]] -> World
+filledWorld = World . map (map Just)
 
 inputTests :: TestTree
 inputTests =
@@ -224,9 +277,17 @@ stateTests =
         ],
       testGroup
         "JSON structure"
-        [ testCase "Load an independently written fixture"
+        [ testCase "Encode and decode ledge directions" $
+            forM_ [(East, "\"ledge-east\""), (North, "\"ledge-north\""), (South, "\"ledge-south\""), (West, "\"ledge-west\"")] $ \(direction, encoded) ->
+              assertBool "Expected an explicit direction in the tile JSON" $
+                Aeson.eitherDecode encoded == Right (Ledge direction)
+                  && Aeson.encode (Ledge direction) == encoded,
+          testCase "Load an independently written fixture"
             $ assertBool "Expected the fixture's state"
             $ Aeson.eitherDecode fixture == Right state,
+          testCase "Load missing cells"
+            $ assertBool "Expected JSON null to represent an absent cell"
+            $ Aeson.eitherDecode @World "{\"tiles\":[[null,\"ground\",null]]}" == Right (World [[Nothing, Just Ground, Nothing]]),
           testCase "Save the expected JSON structure"
             $ assertBool "Expected the fixture's JSON fields"
             $ Aeson.eitherDecode fixture == Right (Aeson.toJSON state)
@@ -237,9 +298,9 @@ stateTests =
           testCase "Position" $
             forM_ [Position 0 0, Position (-1) 2, Position minBound maxBound] assertRoundTrip,
           testCase "Tile" $
-            forM_ [Door, Flowers, Grass, Ground, House, Laboratory, Path, Sand, Sign, TallGrass, Tree, Wall, Water] assertRoundTrip,
+            forM_ [Door, Fence, Flowers, Grass, Ground, Arena, House, Laboratory, Ledge East, Ledge North, Ledge South, Ledge West, Shop, Path, Clinic, Rock, Sand, Sign, TallGrass, Tree, Wall, Water] assertRoundTrip,
           testCase "World" $
-            forM_ [World [], World [[]], World [[Ground], [], [Water, Wall]]] assertRoundTrip
+            forM_ [filledWorld [], filledWorld [[]], filledWorld [[Ground], [], [Water, Wall]], World [[Nothing, Just Ground, Nothing]]] assertRoundTrip
         ],
       testGroup
         "World coordinates"
@@ -249,10 +310,12 @@ stateTests =
               == map Just [Ground, TallGrass, Water, Wall],
           testCase "Missing cells"
             $ assertBool "Expected empty worlds and missing cells to return Nothing"
-            $ tileAt (World []) (Position 0 0) == Nothing
-              && tileAt (World [[]]) (Position 0 0) == Nothing
-              && tileAt (World [[Ground], []]) (Position 0 0) == Nothing
-              && tileAt (World [[Ground], []]) (Position 0 1) == Just Ground,
+            $ tileAt (filledWorld []) (Position 0 0) == Nothing
+              && tileAt (filledWorld [[]]) (Position 0 0) == Nothing
+              && tileAt (filledWorld [[Ground], []]) (Position 0 0) == Nothing
+              && tileAt (filledWorld [[Ground], []]) (Position 0 1) == Just Ground
+              && tileAt (World [[Nothing, Just Ground]]) (Position 0 0) == Nothing
+              && tileAt (World [[Nothing, Just Ground]]) (Position 1 0) == Just Ground,
           testCase "Outside the world"
             $ forM_
               [ Position (-1) 0,
@@ -268,8 +331,8 @@ stateTests =
   where
     fixture =
       "{\"playerPosition\":{\"x\":2,\"y\":1},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"wall\"],[\"water\",\"tall-grass\"]]}}"
-    sampleWorld = World [[TallGrass, Wall], [Ground, Water]]
-    state = GameState (Position 2 1) (World [[Ground, Wall], [Water, TallGrass]])
+    sampleWorld = filledWorld [[TallGrass, Wall], [Ground, Water]]
+    state = GameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
 tests = testGroup "Critters" [engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests]
@@ -290,14 +353,13 @@ tuiTests =
           assertBool "Expected the player at the centered or clamped viewport position" $
             tile (view (GameState position largeWorld)) destination == "🧑",
       testCase "Draw one marker per building footprint" $
-        let layout = World [[House, House, Ground, Laboratory, Laboratory], [House, Door, Ground, Laboratory, Door]]
-            drawing = TUI.render (GameState (Position (-1) (-1)) layout)
-         in assertBool "Expected one house, one lab, and their separate doors" $
-              Text.count "🏠" drawing == 1
-                && Text.count "🔬" drawing == 1
-                && Text.count "🚪" drawing == 2,
+        forM_ [(Arena, "🥊"), (House, "🏠"), (Laboratory, "🔬"), (Shop, "🏪"), (Clinic, "🏥")] $ \(building, marker) ->
+          let layout = filledWorld [[building, building], [building, Door]]
+              drawing = TUI.render (GameState (Position (-1) (-1)) layout)
+           in assertBool "Expected one building marker and its separate door" $
+                Text.count marker drawing == 1 && Text.count "🚪" drawing == 1,
       testCase "Empty and ragged worlds retain a fixed viewport" $
-        forM_ [World [], World [[]], World [[Wall], [], [Ground, Water]]] $ \layout -> do
+        forM_ [filledWorld [], filledWorld [[]], filledWorld [[Wall], [], [Ground, Water]]] $ \layout -> do
           let rows = view (GameState (Position minBound maxBound) layout)
           assertBool "Expected the configured rows and one wide glyph per floor cell" $
             length rows == TUI.height && all ((== TUI.width) . Text.length) rows
@@ -310,8 +372,16 @@ tuiTests =
               tile (view state) (2, 2) == "🧑"
                 && tile (view nextState) (2, 3) == "🧑"
                 && tile (view nextState) (2, 2) == "⬜",
+      testCase "Render ledge directions" $
+        let rows = view (GameState (Position (-1) (-1)) (filledWorld [[Ledge East, Ledge North, Ledge South, Ledge West]]))
+         in assertBool "Expected arrows showing the permitted crossing direction" $
+              Text.take 4 (last rows) == "⏩🔺🔻⏪",
+      testCase "Render missing cells as padding" $
+        let rows = view (GameState (Position (-1) (-1)) (World [[Nothing, Just Ground, Nothing]]))
+         in assertBool "Expected missing cells on either side of real terrain to remain blank" $
+              Text.take 3 (last rows) == "\x3000⬜\x3000",
       testCase "Render tiles north-up with the player over the terrain" $
-        let rows = view (GameState (Position 0 0) (World [[TallGrass, Wall, Ground], [Ground, Water, Wall]]))
+        let rows = view (GameState (Position 0 0) (filledWorld [[TallGrass, Wall, Ground], [Ground, Water, Wall]]))
          in assertBool "Expected all tile glyphs, padding, and the player at the bottom-left" $
               Text.take 3 (rows !! (TUI.height - 2)) == "🌿🧱⬜"
                 && Text.take 3 (rows !! (TUI.height - 1)) == "🧑🌊🧱"
@@ -319,7 +389,7 @@ tuiTests =
                 && tile rows (0, TUI.height - 1) == "\x3000"
     ]
   where
-    largeWorld = World (replicate (TUI.height * 2) (replicate (TUI.width * 2) Ground))
+    largeWorld = filledWorld (replicate (TUI.height * 2) (replicate (TUI.width * 2) Ground))
     tile rows (column, row) = Text.take 1 $ Text.drop column (rows !! (TUI.height - row - 1))
     view = Text.lines . TUI.render
 

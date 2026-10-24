@@ -46,7 +46,7 @@ loop logPath interface saveFile history state = do
   userInput <- interface.input logPath
   let command = Engine.commandFor state userInput
       (nextState, events) = Engine.step state userInput
-  context <- Interface.output interface nextState
+  context <- interface.output nextState
   interface.log context logPath $ "Input: " <> pretty userInput
   interface.log context logPath $ "Command: " <> maybe "Nothing" pretty command
   mapM_ (\event -> interface.log context logPath $ "Event: " <> pretty event) events

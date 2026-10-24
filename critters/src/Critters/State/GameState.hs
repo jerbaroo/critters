@@ -19,14 +19,16 @@ initialState =
   GameState
     { playerPosition = Position 1 4,
       world =
-        World
-          [ replicate 8 Wall,
-            [Wall, Ground, Ground, Ground, Ground, TallGrass, TallGrass, Wall],
-            [Wall, Ground, Ground, Ground, Ground, TallGrass, TallGrass, Wall],
-            [Wall, Ground, Water, Water, Ground, Ground, Ground, Wall],
-            [Wall, Ground, Water, Water, Ground, Ground, Ground, Wall],
-            replicate 8 Wall
-          ]
+        World $
+          map
+            (map Just)
+            [ replicate 8 Wall,
+              [Wall, Ground, Ground, Ground, Ground, TallGrass, TallGrass, Wall],
+              [Wall, Ground, Ground, Ground, Ground, TallGrass, TallGrass, Wall],
+              [Wall, Ground, Water, Water, Ground, Ground, Ground, Wall],
+              [Wall, Ground, Water, Water, Ground, Ground, Ground, Wall],
+              replicate 8 Wall
+            ]
     }
 
 versionCodec :: JSONCodec Int

@@ -1,6 +1,7 @@
 module Critters.Interface.TUI (height, input, output, render, width, writeLog) where
 
 import Critters.Input (Input)
+import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI.Keyboard qualified as Keyboard
 import Critters.State.GameState (GameState (..))
 import Critters.State.Position (Position (..))
@@ -42,12 +43,22 @@ render state = Text.unlines rows
       | position == playerPosition state = "🧑"
       | otherwise = case tileAt (world state) position of
           Just Door -> "🚪"
+          Just Fence -> "🪵"
           Just Flowers -> "🌼"
           Just Grass -> "🟩"
           Just Ground -> "⬜"
+          Just Arena -> building Arena "🥊" "🟥" position
           Just House -> building House "🏠" "🟥" position
           Just Laboratory -> building Laboratory "🔬" "⬜" position
+          Just (Ledge direction) -> case direction of
+            East -> "⏩"
+            North -> "🔺"
+            South -> "🔻"
+            West -> "⏪"
+          Just Shop -> building Shop "🏪" "🟦" position
           Just Path -> "🟫"
+          Just Clinic -> building Clinic "🏥" "🟥" position
+          Just Rock -> "🪨"
           Just Sand -> "🟨"
           Just Sign -> "🪧"
           Just TallGrass -> "🌿"

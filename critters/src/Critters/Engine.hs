@@ -28,11 +28,15 @@ commandFor _ = \case
   Input.Up -> Just (Walk North)
   _ -> Nothing
 
--- | Only valid destinations produce movement facts.
+-- | Only valid destinations produce movement facts. Ledges are crossed in one
+-- input, landing one cell beyond them in their allowed direction.
 eventsFor :: GameState -> Command -> [Event]
 eventsFor state = \case
   Walk direction ->
-    let destination = move direction (playerPosition state)
+    let adjacent = move direction (playerPosition state)
+        destination = case tileAt (world state) adjacent of
+          Just (Ledge allowed) | allowed == direction -> move direction adjacent
+          _ -> adjacent
      in if maybe False walkable (tileAt (world state) destination)
           then [Event.PlayerMoved destination]
           else []
@@ -54,12 +58,18 @@ step state input = (foldl' applyEvent state events, events)
 walkable :: Tile -> Bool
 walkable = \case
   Door -> True
+  Fence -> False
   Flowers -> True
   Grass -> True
   Ground -> True
+  Arena -> False
   House -> False
   Laboratory -> False
+  Ledge _ -> False
+  Shop -> False
   Path -> True
+  Clinic -> False
+  Rock -> False
   Sand -> True
   Sign -> False
   TallGrass -> True
