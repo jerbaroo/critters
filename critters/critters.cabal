@@ -70,6 +70,7 @@ library
         Critters.Command
         Critters.Input
         Critters.Input.Direction
+        Critters.Pretty
         Critters.Run
         Critters.State
         Critters.State.GameState
@@ -85,7 +86,8 @@ library
         aeson,
         autodocodec,
         base,
-        optparse-applicative
+        optparse-applicative,
+        text
 
     -- Directories containing source files.
     hs-source-dirs:   src

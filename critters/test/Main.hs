@@ -23,38 +23,36 @@ tests =
         "Decode errors"
         [ testCase "Fractional coordinate"
             $ assertBool "Expected a parse error"
-            $ isLeft (Aeson.eitherDecode "{\"x\":1.5,\"y\":0}" :: Either String Position),
+            $ isLeft (Aeson.eitherDecode @Position "{\"x\":1.5,\"y\":0}"),
           testCase "Invalid JSON"
             $ assertBool "Expected a parse error"
-            $ isLeft (Aeson.eitherDecode "{" :: Either String GameState),
+            $ isLeft (Aeson.eitherDecode @GameState "{"),
           testCase "Missing coordinate"
             $ assertBool "Expected a parse error"
-            $ isLeft (Aeson.eitherDecode "{\"x\":1}" :: Either String Position),
+            $ isLeft (Aeson.eitherDecode @Position "{\"x\":1}"),
           testCase "Missing save version"
             $ assertBool "Expected a parse error"
             $ isLeft
-              ( Aeson.eitherDecode
-                  "{\"playerPosition\":{\"x\":0,\"y\":0},\"world\":{\"tiles\":[]}}" ::
-                  Either String GameState
+              ( Aeson.eitherDecode @GameState
+                  "{\"playerPosition\":{\"x\":0,\"y\":0},\"world\":{\"tiles\":[]}}"
               ),
           testCase "Non-string tile"
             $ assertBool "Expected a parse error"
-            $ isLeft (Aeson.eitherDecode "1" :: Either String Tile),
+            $ isLeft (Aeson.eitherDecode @Tile "1"),
           testCase "Out-of-range coordinate"
             $ assertBool "Expected a parse error"
-            $ isLeft (Aeson.eitherDecode "{\"x\":1e100,\"y\":0}" :: Either String Position),
+            $ isLeft (Aeson.eitherDecode @Position "{\"x\":1e100,\"y\":0}"),
           testCase "Unknown tile"
             $ assertBool "Expected a parse error"
-            $ isLeft (Aeson.eitherDecode "\"lava\"" :: Either String Tile),
+            $ isLeft (Aeson.eitherDecode @Tile "\"lava\""),
           testCase "Unknown world tile"
             $ assertBool "Expected a parse error"
-            $ isLeft (Aeson.eitherDecode "{\"tiles\":[[\"lava\"]]}" :: Either String World),
+            $ isLeft (Aeson.eitherDecode @World "{\"tiles\":[[\"lava\"]]}"),
           testCase "Unsupported save version"
             $ assertBool "Expected a parse error"
             $ isLeft
-              ( Aeson.eitherDecode
-                  "{\"playerPosition\":{\"x\":0,\"y\":0},\"version\":2,\"world\":{\"tiles\":[]}}" ::
-                  Either String GameState
+              ( Aeson.eitherDecode @GameState
+                  "{\"playerPosition\":{\"x\":0,\"y\":0},\"version\":2,\"world\":{\"tiles\":[]}}"
               )
         ],
       testGroup

@@ -15,6 +15,7 @@
           ghc
           ghcid
           haskell-language-server
+          just
           tilia.packages.${system}.default
           pre-commit
         ];

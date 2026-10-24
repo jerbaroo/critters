@@ -1,5 +1,8 @@
 module Critters.Input (Input (..), parse) where
 
+import Critters.Pretty (Pretty (..))
+import Data.Text (Text)
+import Data.Text qualified as Text
 import Prelude hiding (Left, Right)
 
 data Input
@@ -13,7 +16,7 @@ data Input
   deriving stock (Eq)
 
 -- | Decode line-based controls without interpreting their game meaning.
-parse :: String -> Maybe Input
+parse :: Text -> Maybe Input
 parse = \case
   "" -> Just Enter
   "down" -> Just Down
@@ -22,5 +25,16 @@ parse = \case
   "left" -> Just Left
   "right" -> Just Right
   "up" -> Just Up
-  [character] -> Just (Character character)
-  _ -> Nothing
+  value -> case Text.uncons value of
+    Just (character, rest) | Text.null rest -> Just (Character character)
+    _ -> Nothing
+
+instance Pretty Input where
+  pretty = \case
+    Character character -> "Character '" <> Text.singleton character <> "'"
+    Down -> "Down"
+    Enter -> "Enter"
+    Escape -> "Escape"
+    Left -> "Left"
+    Right -> "Right"
+    Up -> "Up"
