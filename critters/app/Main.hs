@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Critters.CLI qualified as CLI
+import Critters.Run qualified as Run
 
 main :: IO ()
-main = CLI.run
+main = Run.run

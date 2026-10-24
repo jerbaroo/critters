@@ -6,8 +6,8 @@ import Data.Aeson qualified as Aeson
 
 -- | Zero-based coordinates from the bottom-left: x increases rightwards, y upwards.
 data Position = Position
-  { x :: Int
-  , y :: Int
+  { x :: Int,
+    y :: Int
   }
   deriving stock (Eq, Ord)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Position)

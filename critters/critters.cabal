@@ -1,4 +1,4 @@
-cabal-version:      3.14
+cabal-version:      3.12
 -- The cabal-version field refers to the version of the .cabal specification,
 -- and can be different from the cabal-install (the tool) version and the
 -- Cabal (the library) version you are using. As such, the Cabal (the library)
@@ -54,6 +54,7 @@ common settings
         DerivingStrategies
         DerivingVia
         ImportQualifiedPost
+        LambdaCase
         OverloadedStrings
         TypeApplications
     default-language: GHC2024
@@ -69,6 +70,7 @@ library
         Critters.Command
         Critters.Input
         Critters.Input.Direction
+        Critters.Run
         Critters.State
         Critters.State.GameState
         Critters.State.Position

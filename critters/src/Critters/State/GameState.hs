@@ -8,8 +8,8 @@ import Critters.State.World (World (..))
 import Data.Aeson qualified as Aeson
 
 data GameState = GameState
-  { playerPosition :: Position
-  , world :: World
+  { playerPosition :: Position,
+    world :: World
   }
   deriving stock (Eq)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec GameState)
@@ -17,15 +17,15 @@ data GameState = GameState
 initialState :: GameState
 initialState =
   GameState
-    { playerPosition = Position 1 4
-    , world =
+    { playerPosition = Position 1 4,
+      world =
         World
-          [ replicate 8 Wall
-          , [Wall, Ground, Ground, Ground, Ground, TallGrass, TallGrass, Wall]
-          , [Wall, Ground, Ground, Ground, Ground, TallGrass, TallGrass, Wall]
-          , [Wall, Ground, Water, Water, Ground, Ground, Ground, Wall]
-          , [Wall, Ground, Water, Water, Ground, Ground, Ground, Wall]
-          , replicate 8 Wall
+          [ replicate 8 Wall,
+            [Wall, Ground, Ground, Ground, Ground, TallGrass, TallGrass, Wall],
+            [Wall, Ground, Ground, Ground, Ground, TallGrass, TallGrass, Wall],
+            [Wall, Ground, Water, Water, Ground, Ground, Ground, Wall],
+            [Wall, Ground, Water, Water, Ground, Ground, Ground, Wall],
+            replicate 8 Wall
           ]
     }
 
