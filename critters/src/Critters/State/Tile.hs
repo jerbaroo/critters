@@ -33,8 +33,9 @@ data Tile
 
 instance HasCodec Tile where
   codec =
-    Codec.stringConstCodec $
-      (Arena, "arena")
+    Codec.named "Tile"
+      $ Codec.stringConstCodec
+      $ (Arena, "arena")
         :| [ (Clinic, "clinic"),
              (Door, "door"),
              (Fence, "fence"),

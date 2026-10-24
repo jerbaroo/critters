@@ -81,12 +81,40 @@
                 "items": {
                   "$comment": "EncounterEntry",
                   "properties": {
+                    "allowCapture": {
+                      "$comment": "Permit capture attempts in this encounter.",
+                      "type": "boolean"
+                    },
+                    "allowEscape": {
+                      "$comment": "Permit escape attempts from this encounter.",
+                      "type": "boolean"
+                    },
                     "battle": {
-                      "$comment": "Configured battle identifier.",
-                      "type": "string"
+                      "$comment": "Legacy configured battle identifier.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "level": {
+                      "$comment": "Generated opponent level.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        }
+                      ]
                     },
                     "maxLevel": {
-                      "$comment": "Optional maximum generated opponent level.",
+                      "$comment": "Legacy maximum generated opponent level.",
                       "anyOf": [
                         {
                           "type": "null"
@@ -99,7 +127,7 @@
                       ]
                     },
                     "minLevel": {
-                      "$comment": "Optional minimum generated opponent level.",
+                      "$comment": "Legacy minimum generated opponent level.",
                       "anyOf": [
                         {
                           "type": "null"
@@ -111,6 +139,17 @@
                         }
                       ]
                     },
+                    "species": {
+                      "$comment": "Species identifier for the generated opponent.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
                     "weight": {
                       "$comment": "Positive selection weight.",
                       "maximum": 9223372036854775807,
@@ -118,9 +157,6 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "battle"
-                  ],
                   "type": "object"
                 },
                 "type": "array"
@@ -138,77 +174,7 @@
               "tiles": {
                 "$comment": "Terrain eligible for this table.",
                 "items": {
-                  "oneOf": [
-                    {
-                      "const": "arena"
-                    },
-                    {
-                      "const": "clinic"
-                    },
-                    {
-                      "const": "door"
-                    },
-                    {
-                      "const": "fence"
-                    },
-                    {
-                      "const": "flowers"
-                    },
-                    {
-                      "const": "grass"
-                    },
-                    {
-                      "const": "ground"
-                    },
-                    {
-                      "const": "house"
-                    },
-                    {
-                      "const": "laboratory"
-                    },
-                    {
-                      "const": "ledge-east"
-                    },
-                    {
-                      "const": "ledge-north"
-                    },
-                    {
-                      "const": "ledge-south"
-                    },
-                    {
-                      "const": "ledge-west"
-                    },
-                    {
-                      "const": "path"
-                    },
-                    {
-                      "const": "rock"
-                    },
-                    {
-                      "const": "sand"
-                    },
-                    {
-                      "const": "shop"
-                    },
-                    {
-                      "const": "sign"
-                    },
-                    {
-                      "const": "stairs"
-                    },
-                    {
-                      "const": "tall-grass"
-                    },
-                    {
-                      "const": "tree"
-                    },
-                    {
-                      "const": "wall"
-                    },
-                    {
-                      "const": "water"
-                    }
-                  ]
+                  "$ref": "#/$defs/Tile"
                 },
                 "type": "array"
               }
@@ -266,10 +232,6 @@
             "properties": {
               "accuracy": {
                 "$comment": "Hit probability before game rules.\nFiniteDouble"
-              },
-              "affinity": {
-                "$comment": "Game-defined affinity.",
-                "type": "string"
               },
               "attackStat": {
                 "$comment": "Offensive stat identifier.",
@@ -331,6 +293,10 @@
                 "maximum": 9223372036854775807,
                 "minimum": -9223372036854775808,
                 "type": "integer"
+              },
+              "type": {
+                "$comment": "Game-defined type.",
+                "type": "string"
               }
             },
             "required": [
@@ -354,16 +320,6 @@
             "accuracyStageFormula": {
               "$comment": "Accuracy and evasion stage multiplier.",
               "type": "string"
-            },
-            "affinityChart": {
-              "$comment": "Attack affinity to defending affinity multipliers.",
-              "additionalProperties": {
-                "additionalProperties": {
-                  "$comment": "FiniteDouble"
-                },
-                "type": "object"
-              },
-              "type": "object"
             },
             "aiScoreFormula": {
               "$comment": "Score used by the strongest opponent policy.",
@@ -394,7 +350,7 @@
               "type": "boolean"
             },
             "damageFormula": {
-              "$comment": "Damage expression; affinity immunity still prevents damage.",
+              "$comment": "Damage expression; type-chart immunity still prevents damage.",
               "type": "string"
             },
             "defeatRecovery": {
@@ -435,10 +391,6 @@
               "properties": {
                 "accuracy": {
                   "$comment": "Hit probability before game rules.\nFiniteDouble"
-                },
-                "affinity": {
-                  "$comment": "Game-defined affinity.",
-                  "type": "string"
                 },
                 "attackStat": {
                   "$comment": "Offensive stat identifier.",
@@ -500,6 +452,10 @@
                   "maximum": 9223372036854775807,
                   "minimum": -9223372036854775808,
                   "type": "integer"
+                },
+                "type": {
+                  "$comment": "Game-defined type.",
+                  "type": "string"
                 }
               },
               "required": [
@@ -550,7 +506,7 @@
               "type": "boolean"
             },
             "sameAffinityBonus": {
-              "$comment": "Multiplier when a move matches an attacking affinity.\nFiniteDouble"
+              "$comment": "Multiplier when a move matches the user's type.\nFiniteDouble"
             },
             "simultaneousDefeatWins": {
               "$comment": "Treat a simultaneous final faint as a victory.",
@@ -590,21 +546,37 @@
             "tieBreak": {
               "$comment": "Equal-speed order: player, opponent or random.",
               "type": "string"
+            },
+            "typeChart": {
+              "$comment": "Attack type to defending type multipliers.",
+              "additionalProperties": {
+                "additionalProperties": {
+                  "$comment": "FiniteDouble"
+                },
+                "type": "object"
+              },
+              "type": "object"
             }
           },
+          "required": [
+            "statFormula",
+            "healthFormula"
+          ],
           "type": "object"
         },
         "species": {
-          "$comment": "Species stats, affinities and learnsets.",
+          "$comment": "Species stats, types and learnsets.",
           "additionalProperties": {
             "$comment": "Species",
             "properties": {
-              "affinities": {
-                "$comment": "Game-defined affinities.",
-                "items": {
-                  "type": "string"
+              "baseStats": {
+                "$comment": "Positive base stats; move definitions choose stat identifiers.",
+                "additionalProperties": {
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
                 },
-                "type": "array"
+                "type": "object"
               },
               "captureRate": {
                 "$comment": "Base capture probability.\nFiniteDouble"
@@ -629,14 +601,12 @@
                 "$comment": "Optional display name.",
                 "type": "string"
               },
-              "stats": {
-                "$comment": "Positive base stats; move definitions choose stat identifiers.",
-                "additionalProperties": {
-                  "maximum": 9223372036854775807,
-                  "minimum": -9223372036854775808,
-                  "type": "integer"
+              "types": {
+                "$comment": "Game-defined types.",
+                "items": {
+                  "type": "string"
                 },
-                "type": "object"
+                "type": "array"
               }
             },
             "type": "object"
@@ -669,8 +639,8 @@
                 "minimum": -9223372036854775808,
                 "type": "integer"
               },
-              "immuneAffinities": {
-                "$comment": "Affinities immune to this status.",
+              "immuneTypes": {
+                "$comment": "Types immune to this status.",
                 "items": {
                   "type": "string"
                 },
@@ -1122,6 +1092,79 @@
         }
       ],
       "type": "object"
+    },
+    "Tile": {
+      "oneOf": [
+        {
+          "const": "arena"
+        },
+        {
+          "const": "clinic"
+        },
+        {
+          "const": "door"
+        },
+        {
+          "const": "fence"
+        },
+        {
+          "const": "flowers"
+        },
+        {
+          "const": "grass"
+        },
+        {
+          "const": "ground"
+        },
+        {
+          "const": "house"
+        },
+        {
+          "const": "laboratory"
+        },
+        {
+          "const": "ledge-east"
+        },
+        {
+          "const": "ledge-north"
+        },
+        {
+          "const": "ledge-south"
+        },
+        {
+          "const": "ledge-west"
+        },
+        {
+          "const": "path"
+        },
+        {
+          "const": "rock"
+        },
+        {
+          "const": "sand"
+        },
+        {
+          "const": "shop"
+        },
+        {
+          "const": "sign"
+        },
+        {
+          "const": "stairs"
+        },
+        {
+          "const": "tall-grass"
+        },
+        {
+          "const": "tree"
+        },
+        {
+          "const": "wall"
+        },
+        {
+          "const": "water"
+        }
+      ]
     }
   },
   "anyOf": [
@@ -1420,77 +1463,7 @@
                         "type": "null"
                       },
                       {
-                        "oneOf": [
-                          {
-                            "const": "arena"
-                          },
-                          {
-                            "const": "clinic"
-                          },
-                          {
-                            "const": "door"
-                          },
-                          {
-                            "const": "fence"
-                          },
-                          {
-                            "const": "flowers"
-                          },
-                          {
-                            "const": "grass"
-                          },
-                          {
-                            "const": "ground"
-                          },
-                          {
-                            "const": "house"
-                          },
-                          {
-                            "const": "laboratory"
-                          },
-                          {
-                            "const": "ledge-east"
-                          },
-                          {
-                            "const": "ledge-north"
-                          },
-                          {
-                            "const": "ledge-south"
-                          },
-                          {
-                            "const": "ledge-west"
-                          },
-                          {
-                            "const": "path"
-                          },
-                          {
-                            "const": "rock"
-                          },
-                          {
-                            "const": "sand"
-                          },
-                          {
-                            "const": "shop"
-                          },
-                          {
-                            "const": "sign"
-                          },
-                          {
-                            "const": "stairs"
-                          },
-                          {
-                            "const": "tall-grass"
-                          },
-                          {
-                            "const": "tree"
-                          },
-                          {
-                            "const": "wall"
-                          },
-                          {
-                            "const": "water"
-                          }
-                        ]
+                        "$ref": "#/$defs/Tile"
                       }
                     ]
                   },
@@ -2189,77 +2162,7 @@
                           "type": "null"
                         },
                         {
-                          "oneOf": [
-                            {
-                              "const": "arena"
-                            },
-                            {
-                              "const": "clinic"
-                            },
-                            {
-                              "const": "door"
-                            },
-                            {
-                              "const": "fence"
-                            },
-                            {
-                              "const": "flowers"
-                            },
-                            {
-                              "const": "grass"
-                            },
-                            {
-                              "const": "ground"
-                            },
-                            {
-                              "const": "house"
-                            },
-                            {
-                              "const": "laboratory"
-                            },
-                            {
-                              "const": "ledge-east"
-                            },
-                            {
-                              "const": "ledge-north"
-                            },
-                            {
-                              "const": "ledge-south"
-                            },
-                            {
-                              "const": "ledge-west"
-                            },
-                            {
-                              "const": "path"
-                            },
-                            {
-                              "const": "rock"
-                            },
-                            {
-                              "const": "sand"
-                            },
-                            {
-                              "const": "shop"
-                            },
-                            {
-                              "const": "sign"
-                            },
-                            {
-                              "const": "stairs"
-                            },
-                            {
-                              "const": "tall-grass"
-                            },
-                            {
-                              "const": "tree"
-                            },
-                            {
-                              "const": "wall"
-                            },
-                            {
-                              "const": "water"
-                            }
-                          ]
+                          "$ref": "#/$defs/Tile"
                         }
                       ]
                     },

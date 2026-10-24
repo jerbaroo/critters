@@ -62,7 +62,7 @@ instance HasCodec CombatConfig where
         <*> Codec.optionalFieldWithOmittedDefault "items" (Map.empty) "Battle item definitions." Codec..= configItems
         <*> Codec.optionalFieldWithOmittedDefault "moves" (Map.empty) "Move definitions." Codec..= configMoves
         <*> Codec.optionalFieldWithOmittedDefault "rules" (defaultRules) "Game-defined combat and progression rules." Codec..= configRules
-        <*> Codec.optionalFieldWithOmittedDefault "species" (Map.empty) "Species stats, affinities and learnsets." Codec..= configSpecies
+        <*> Codec.optionalFieldWithOmittedDefault "species" (Map.empty) "Species stats, types and learnsets." Codec..= configSpecies
         <*> Codec.optionalFieldWithOmittedDefault "statuses" (Map.empty) "Persistent status definitions." Codec..= configStatuses
     where
       validate value
@@ -71,12 +71,23 @@ instance HasCodec CombatConfig where
         | any (not . knownMove) (concatMap (concat . Map.elems . Species.speciesLearnset) (Map.elems (configSpecies value))) = Left "A species learnset references a missing move."
         | any (not . validEffect) (Move.moveEffects (Rules.rulesFallbackMove (configRules value)) <> concatMap Move.moveEffects (Map.elems (configMoves value))) = Left "A move effect references an unknown status or invalid stat."
         | any (not . validCritter) (concatMap Definition.definitionOpponents (Map.elems (configBattles value))) = Left "An opposing critter references an unknown species, move or status."
-        | any (not . (`Map.member` configBattles value) . Entry.entryBattle) (concatMap Encounter.encounterEntries (configEncounters value)) = Left "An encounter references a missing battle."
-        | any (\entry -> maybe False (> Rules.rulesMaxLevel (configRules value)) (Entry.entryMinLevel entry) || maybe False (> Rules.rulesMaxLevel (configRules value)) (Entry.entryMaxLevel entry)) (concatMap Encounter.encounterEntries (configEncounters value)) = Left "Encounter levels exceed the game level limit."
+        | any (not . validEncounterSpecies) encounterEntries = Left "An encounter references a missing species."
+        | any (not . validEncounterBattle) encounterEntries = Left "An encounter references a missing battle."
+        | any (not . validEncounterLevel) encounterEntries = Left "Encounter levels exceed the game level limit."
         | any (not . (`Map.member` configStatuses value)) (Map.keys (Rules.rulesStatusCaptureBonuses (configRules value))) = Left "A capture bonus references a missing status."
         | otherwise = Right value
         where
           knownMove identifier = Map.member identifier (configMoves value)
+          encounterEntries = concatMap Encounter.encounterEntries (configEncounters value)
+          validEncounterBattle = \case
+            Entry.EncounterEntry{} -> True
+            Entry.LegacyEncounterEntry{Entry.entryBattle} -> Map.member entryBattle (configBattles value)
+          validEncounterLevel = \case
+            Entry.EncounterEntry{Entry.entryLevel} -> entryLevel <= Rules.rulesMaxLevel (configRules value)
+            Entry.LegacyEncounterEntry{Entry.entryMaxLevel, Entry.entryMinLevel} -> all (maybe True (<= Rules.rulesMaxLevel (configRules value))) [entryMaxLevel, entryMinLevel]
+          validEncounterSpecies = \case
+            Entry.EncounterEntry{Entry.entrySpecies} -> Map.member entrySpecies (configSpecies value)
+            Entry.LegacyEncounterEntry{} -> True
           validCritter critter = Map.member (Critter.species critter) (configSpecies value) && all knownMove (Profile.profileKnownMoves (Critter.battleProfile critter)) && maybe True (\affliction -> Map.member (Affliction.afflictionStatus affliction) (configStatuses value)) (Profile.profileStatus (Critter.battleProfile critter))
           validEffect = \case
             Chance _ effect -> validEffect effect

@@ -35,7 +35,7 @@ import Critters.State.MoveEffect (MoveEffect (..), Target (..))
 import Critters.State.MoveId (MoveId (..))
 import Critters.State.Party (Party (..))
 import Critters.State.Rules (Rules (..), defaultRules)
-import Critters.State.Species (Species (..), defaultSpecies)
+import Critters.State.Species (BaseStats (..), Species (..), defaultSpecies)
 import Critters.State.StatusDefinition (StatusDefinition (..), defaultStatus)
 import Critters.State.Tile (Tile (Ground))
 import Data.Aeson qualified as Aeson
@@ -50,18 +50,21 @@ encounterTests :: TestTree
 encounterTests =
   testGroup
     "Encounters"
-    [ testCase "Trigger weighted, level-configured encounters after eligible steps" $
-        let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 1 [EncounterEntry "practice" (Just 3) (Just 3) 1] (MapId "overworld") 2 [Ground]]}}
+    [ testCase "Generate a full-health wild critter from a weighted encounter entry" $
+        let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 1 [EncounterEntry True True 3 "stonekin" 1] (MapId "overworld") 2 [Ground]]}}
             (first, events1) = Engine.step configured Input.Right
             (second, events2) = Engine.step first Input.Right
-         in assertBool "Expected a minimum step count, generated health, and replayable entry" (battle first == Nothing && encounterSteps first == 1 && fmap (map level . battleOpponentParty) (battle second) == Just [3] && fmap (map maxHitPoints . battleOpponentParty) (battle second) == Just [26] && encounterSteps second == 0 && foldl' Engine.applyEvent configured (events1 <> events2) == second),
+            encounterDetails active = (map level (battleOpponentParty active), map hitPoints (battleOpponentParty active), map maxHitPoints (battleOpponentParty active), definitionAllowCapture (battleDefinition active), definitionAllowEscape (battleDefinition active))
+         in assertBool "Expected a minimum step count, generated full health, encounter permissions, and replayable entry" (battle first == Nothing && encounterSteps first == 1 && fmap encounterDetails (battle second) == Just ([3], [26], [26], True, True) && encounterSteps second == 0 && foldl' Engine.applyEvent configured (events1 <> events2) == second),
       testCase "Blocked movement and unusable parties do not roll encounters" $
-        let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 1 [EncounterEntry "practice" Nothing Nothing 1] (MapId "overworld") 0 [Ground]]}}
+        let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 1 [EncounterEntry True True 2 "stonekin" 1] (MapId "overworld") 0 [Ground]]}}
             (blocked, _) = Engine.step configured Input.Left
             (empty, _) = Engine.step configured{party = Party []} Input.Right
          in assertBool "Expected no encounter state or random changes" (battle blocked == Nothing && encounterSteps blocked == 0 && randomSeed blocked == randomSeed configured && battle empty == Nothing && encounterSteps empty == 0),
+      testCase "Encounter slots default to capturable and escapable" $
+        assertBool "Expected wild encounter permissions to default to true" (Aeson.eitherDecode @EncounterEntry "{\"level\":3,\"species\":\"stonekin\"}" == Right (EncounterEntry True True 3 "stonekin" 1)),
       testCase "Encounter tables and selected outcomes survive serialization" $
-        let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 0.8 [EncounterEntry "practice" (Just 4) (Just 2) 3] (MapId "overworld") 0 [Ground]]}}
+        let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 0.8 [EncounterEntry False False 2 "stonekin" 3] (MapId "overworld") 0 [Ground]]}}
          in assertBool "Expected complete encounter data to round trip" (Aeson.eitherDecode (Aeson.encode configured) == Right configured)
     ]
 
@@ -169,13 +172,13 @@ profileTests =
         let critter = (basicCritter 8 2 10 "leafling"){battleProfile = defaultProfile{profileExperience = 15, profileKnownMoves = [MoveId "strike"], profileRemainingUses = Map.singleton (MoveId "strike") 2, profileStatus = Just (Affliction (Just 3) "slow")}}
          in assertBool "Expected a complete individual combat profile" (Aeson.eitherDecode (Aeson.encode critter) == Right critter),
       testCase "Load authored species stats and level-based moves" $
-        let definition = defaultSpecies{speciesLearnset = Map.singleton 3 [MoveId "strike"], speciesStats = Map.singleton "focus" 12}
+        let definition = defaultSpecies{speciesLearnset = Map.singleton 3 [MoveId "strike"], speciesStats = BaseStats (Map.singleton "focus" 12)}
          in assertBool "Expected author-defined stats and moves" (Aeson.eitherDecode (Aeson.encode definition) == Right definition),
       testCase "Reject invalid progression, duplicate moves and statuses" $ do
         assertBool "Expected nonnegative experience" (isLeft (Aeson.eitherDecode @BattleProfile "{\"experience\":-1}"))
         assertBool "Expected unique learned moves" (isLeft (Aeson.eitherDecode @BattleProfile "{\"knownMoves\":[\"strike\",\"strike\"]}"))
         assertBool "Expected positive status duration" (isLeft (Aeson.eitherDecode @Affliction "{\"status\":\"slow\",\"remaining\":0}"))
-        assertBool "Expected positive species stats" (isLeft (Aeson.eitherDecode @Species "{\"stats\":{\"attack\":0}}"))
+        assertBool "Expected positive species stats" (isLeft (Aeson.eitherDecode @Species "{\"baseStats\":{\"attack\":0}}"))
     ]
 
 progressionTests :: TestTree
@@ -226,6 +229,7 @@ snapshotTests =
          in assertBool "Expected exactly the recorded fields to change" (result == starting{battle = Just active, inventory = Map.singleton "tonic" 2, randomSeed = 42} && Aeson.eitherDecode (Aeson.encode (Event.BattleChanged update)) == Right (Event.BattleChanged update)),
       testCase "Reject dangling species, move and encounter references" $ do
         assertBool "Expected a learnset reference to exist" (isLeft (Aeson.eitherDecode @CombatConfig "{\"species\":{\"leafling\":{\"learnset\":{\"1\":[\"missing\"]}}}}"))
+        assertBool "Expected an encounter species reference to exist" (isLeft (Aeson.eitherDecode @CombatConfig "{\"encounters\":[{\"mapId\":\"overworld\",\"entries\":[{\"species\":\"missing\",\"level\":2}]}]}"))
         assertBool "Expected nonnegative inventory counts" (isLeft (Aeson.eitherDecode @GameState "{\"version\":1,\"maps\":{},\"playerPosition\":{\"x\":0,\"y\":0},\"inventory\":{\"tonic\":-1}}"))
     ]
 
@@ -296,8 +300,11 @@ tests =
             assertBool "Expected a finite rule result" (isLeft (Formula.evaluate Map.empty (Formula "1/0")))
             assertBool "Expected unknown variables to fail" (isLeft (Formula.evaluate Map.empty (Formula "missing + 1"))),
           testCase "Round trip a game-defined ruleset" $
-            let rules = defaultRules{rulesDamageFormula = Formula "floor(power + level)", rulesTieBreak = "random", rulesMaxKnownMoves = 6}
+            let rules = defaultRules{rulesDamageFormula = Formula "floor(power + level)", rulesTieBreak = "random", rulesMaxKnownMoves = 6, rulesTypeChart = Map.singleton "fire" (Map.singleton "grass" 2)}
              in assertBool "Expected rules to be game data" (Aeson.eitherDecode (Aeson.encode rules) == Right rules),
+          testCase "Require explicit health and stat formulas" $ do
+            assertBool "Expected healthFormula to be required" (isLeft (Aeson.eitherDecode @Rules "{\"statFormula\":\"base\"}"))
+            assertBool "Expected statFormula to be required" (isLeft (Aeson.eitherDecode @Rules "{\"healthFormula\":\"base\"}")),
           testCase "Reject unknown policy values and formula variables" $ do
             assertBool "Expected policy validation" (isLeft (Aeson.eitherDecode @Rules "{\"tieBreak\":\"missing\"}"))
             assertBool "Expected rule variable validation" (isLeft (Aeson.eitherDecode @Rules "{\"damageFormula\":\"missing + 1\"}")),
@@ -308,8 +315,8 @@ tests =
         ],
       testGroup
         "Moves"
-        [ testCase "Decode an independently written move and defaults" $
-            assertBool "Expected configured power and default targeting rules" (Aeson.eitherDecode @Move "{\"name\":\"Basic strike\",\"power\":20}" == Right defaultMove),
+        [ testCase "Decode an independently written move type and defaults" $
+            assertBool "Expected configured move type and default targeting rules" (Aeson.eitherDecode @Move "{\"name\":\"Basic strike\",\"power\":20,\"type\":\"fire\"}" == Right defaultMove{moveType = "fire"}),
           testCase "Round trip conditional move effects" $
             let move = defaultMove{moveEffects = [Chance 0.25 (InflictStatus Opponent "slow"), ChangeHealth Self (Formula "damage / 2"), ChangeStage Opponent "defense" (-1)]}
              in assertBool "Expected all authored effects to survive serialization" (Aeson.eitherDecode (Aeson.encode move) == Right move),
@@ -330,7 +337,7 @@ turnTests =
             second = foldl' Engine.applyEvent first (Turn.resolveAction first (UseMove (MoveId "strike")))
          in assertBool "Expected ordered damage and victory without a second retaliation" (map hitPoints (members (party first)) == [15] && map hitPoints (members (party second)) == [15] && fmap battleOutcome (battle second) == Just (Just Victory) && fmap battleTurn (battle second) == Just 2 && map (profileRemainingUses . battleProfile) (members (party first)) == [Map.singleton (MoveId "strike") 4]),
       testCase "Use configured speed ordering and require a free replacement" $
-        let faster = defaultSpecies{speciesLearnset = Map.singleton 1 [MoveId "strike"], speciesStats = Map.fromList [("attack", 10), ("defense", 10), ("speed", 50)]}
+        let faster = defaultSpecies{speciesLearnset = Map.singleton 1 [MoveId "strike"], speciesStats = BaseStats (Map.fromList [("attack", 10), ("defense", 10), ("speed", 50)])}
             configured = fixture{combat = (combat fixture){configSpecies = Map.insert "stonekin" faster (configSpecies (combat fixture))}, party = Party [basicCritter 3 2 20 "leafling", basicCritter 10 2 10 "leafling"]}
             opened = start configured
             fainted = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
@@ -368,9 +375,9 @@ variationTests =
             opened = start configured
             result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
          in assertBool "Expected a configured critical victory" (fmap battleOutcome (battle result) == Just (Just Victory) && map hitPoints (members (party result)) == [20]),
-      testCase "Respect authored affinity immunity and weighted multi-hit counts" $ do
-        let immuneSpecies = defaultSpecies{speciesAffinities = ["stone"], speciesLearnset = Map.singleton 1 [MoveId "strike"]}
-            configured = fixture{combat = (combat fixture){configMoves = Map.adjust (\move -> move{moveAffinity = "leaf"}) (MoveId "strike") (configMoves (combat fixture)), configSpecies = Map.insert "stonekin" immuneSpecies (configSpecies (combat fixture)), configRules = (configRules (combat fixture)){rulesAffinityChart = Map.singleton "leaf" (Map.singleton "stone" 0)}}}
+      testCase "Respect authored type immunity and weighted multi-hit counts" $ do
+        let immuneSpecies = defaultSpecies{speciesTypes = ["rock"], speciesLearnset = Map.singleton 1 [MoveId "strike"]}
+            configured = fixture{combat = (combat fixture){configMoves = Map.adjust (\move -> move{moveType = "grass"}) (MoveId "strike") (configMoves (combat fixture)), configSpecies = Map.insert "stonekin" immuneSpecies (configSpecies (combat fixture)), configRules = (configRules (combat fixture)){rulesTypeChart = Map.singleton "grass" (Map.singleton "rock" 0)}}}
             opened = start configured
             immune = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
             multiple = start fixture{combat = (combat fixture){configMoves = Map.adjust (\move -> move{moveMinHits = 2, moveMaxHits = 2, moveHitWeights = Map.singleton 2 1}) (MoveId "strike") (configMoves (combat fixture))}}

@@ -21,7 +21,7 @@ import Critters.State.Item (Item (..), defaultItem)
 import Critters.State.MoveId (MoveId (..))
 import Critters.State.Party (Party (..))
 import Critters.State.Rules (Rules (..))
-import Critters.State.Species (Species (..), defaultSpecies)
+import Critters.State.Species (BaseStats (..), Species (..), defaultSpecies)
 import Data.Map.Strict qualified as Map
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (hClose, openTempFile)
@@ -65,7 +65,7 @@ tests =
                 (continued, _) = Engine.step replayed Input.Enter
             assertBool "Expected rewards once and exploration to resume" (replayed == closed && battle replayed == Nothing && Map.lookup "capsule" (inventory continued) == Just 2 && Map.lookup (FlagId "caught") (flags continued) == Just True),
       testCase "Resume forced replacement without granting a free opponent action" $ do
-        let faster = defaultSpecies{speciesLearnset = Map.singleton 1 [MoveId "strike"], speciesStats = Map.singleton "speed" 50}
+        let faster = defaultSpecies{speciesLearnset = Map.singleton 1 [MoveId "strike"], speciesStats = BaseStats (Map.singleton "speed" 50)}
             configured = fixture{combat = (combat fixture){configSpecies = Map.insert "stonekin" faster (configSpecies (combat fixture))}, party = Party [basicCritter 3 2 20 "leafling", basicCritter 10 2 10 "leafling"]}
             opened = Save.apply configured (entry configured)
             history = entry configured <> Turn.resolveAction opened (UseMove (MoveId "strike"))

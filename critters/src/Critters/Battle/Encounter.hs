@@ -13,7 +13,6 @@ import Critters.State.CombatConfig qualified as Config
 import Critters.State.Critter (Critter)
 import Critters.State.Critter qualified as Critter
 import Critters.State.Encounter qualified as Encounter
-import Critters.State.EncounterEntry (EncounterEntry)
 import Critters.State.EncounterEntry qualified as Entry
 import Critters.State.GameState (GameState (..), world)
 import Critters.State.Party qualified as Party
@@ -48,23 +47,31 @@ eventsForStep state
           chosen <- Common.chooseWeighted [(entry, Entry.entryWeight entry) | entry <- Encounter.encounterEntries table]
           case chosen of
             Nothing -> pure Nothing
-            Just entry -> case BattleEngine.beginBattle state (Entry.entryBattle entry) of
-              Left _ -> pure Nothing
-              Right active -> do
-                opponents <- traverse (vary entry) (battleOpponentParty active)
-                seed <- State.gets contextSeed
-                pure (Just active{battleInitialSeed = Just seed, battleOpponentParty = opponents})
+            Just entry -> do
+              active <- case entry of
+                Entry.EncounterEntry{} -> pure (either (const Nothing) Just (BattleEngine.beginEncounter state entry))
+                Entry.LegacyEncounterEntry{Entry.entryBattle} -> case BattleEngine.beginBattle state entryBattle of
+                  Left _ -> pure Nothing
+                  Right battle -> do
+                    opponents <- traverse (vary entry) (battleOpponentParty battle)
+                    pure (Just battle{battleOpponentParty = opponents})
+              case active of
+                Nothing -> pure Nothing
+                Just battle -> do
+                  seed <- State.gets contextSeed
+                  pure (Just battle{battleInitialSeed = Just seed})
     steps = if encounterSteps state == maxBound then maxBound else encounterSteps state + 1
 
-vary :: EncounterEntry -> Critter -> State Context Critter
-vary entry critter
-  | Entry.entryMinLevel entry == Nothing && Entry.entryMaxLevel entry == Nothing = pure critter
+vary :: Entry.EncounterEntry -> Critter -> State Context Critter
+vary Entry.EncounterEntry{} critter = pure critter
+vary Entry.LegacyEncounterEntry{Entry.entryMaxLevel, Entry.entryMinLevel} critter
+  | entryMinLevel == Nothing && entryMaxLevel == Nothing = pure critter
   | otherwise = do
       context <- State.get
-      let low = fromMaybe (fromMaybe (Critter.level critter) (Entry.entryMaxLevel entry)) (Entry.entryMinLevel entry)
-          high = fromMaybe low (Entry.entryMaxLevel entry)
+      let low = fromMaybe (fromMaybe (Critter.level critter) entryMaxLevel) entryMinLevel
+          high = fromMaybe low entryMaxLevel
       level <- Common.chooseInt low high
       let definition = Map.findWithDefault Species.defaultSpecies (Critter.species critter) (Config.configSpecies (battleConfig (contextBattle context)))
-          health = max 1 (integer (Common.evaluate (number (Critter.maxHitPoints critter)) (Rules.rulesHealthFormula (Common.rulesFor context)) [("base", number (Map.findWithDefault (Critter.maxHitPoints critter) "health" (Species.speciesStats definition))), ("level", number level)]))
+          health = max 1 (integer (Common.evaluate (number (Critter.maxHitPoints critter)) (Rules.rulesHealthFormula (Common.rulesFor context)) [("base", number (Map.findWithDefault (Critter.maxHitPoints critter) "health" (Species.unBaseStats (Species.speciesStats definition)))), ("level", number level)]))
           remaining = if Critter.hitPoints critter == 0 then 0 else max 1 (min health (integer (number health * number (Critter.hitPoints critter) / number (Critter.maxHitPoints critter))))
       pure critter{Critter.hitPoints = remaining, Critter.level = level, Critter.maxHitPoints = health}

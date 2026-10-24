@@ -241,7 +241,7 @@ stat :: Context -> Side -> Text -> Double
 stat context side identifier = max 1 (baseStat context side identifier * stageFactor context side identifier)
 
 statsFor :: Battle -> Critter -> Map Text Double
-statsFor current critter = Map.map (\base -> max 1 (evaluate (number base) (Rules.rulesStatFormula rules) [("base", number base), ("level", number (Critter.level critter))])) (Species.speciesStats definition)
+statsFor current critter = Map.map (\base -> max 1 (evaluate (number base) (Rules.rulesStatFormula rules) [("base", number base), ("level", number (Critter.level critter))])) (Species.unBaseStats (Species.speciesStats definition))
   where
     definition = Map.findWithDefault Species.defaultSpecies (Critter.species critter) (Config.configSpecies (battleConfig current))
     rules = Config.configRules (battleConfig current)

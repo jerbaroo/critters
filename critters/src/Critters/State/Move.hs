@@ -11,11 +11,10 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 
 defaultMove :: Move
-defaultMove = Move 1 "neutral" "attack" 0 "defense" [] Map.empty 1 0 1 "Basic strike" 20 0
+defaultMove = Move 1 "attack" 0 "defense" [] Map.empty 1 0 1 "Basic strike" 20 0 "normal"
 
 data Move = Move
   { moveAccuracy :: Double,
-    moveAffinity :: Text,
     moveAttackStat :: Text,
     moveCriticalRate :: Double,
     moveDefenseStat :: Text,
@@ -26,7 +25,8 @@ data Move = Move
     moveMinHits :: Int,
     moveName :: Text,
     movePower :: Int,
-    movePriority :: Int
+    movePriority :: Int,
+    moveType :: Text
   }
   deriving stock (Eq)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Move)
@@ -37,7 +37,6 @@ instance HasCodec Move where
       $ Codec.object "Move"
       $ Move
         <$> Codec.optionalFieldWithOmittedDefaultWith "accuracy" NumberCodec.probabilityCodec 1 "Hit probability before game rules." Codec..= moveAccuracy
-        <*> Codec.optionalFieldWithOmittedDefault "affinity" "neutral" "Game-defined affinity." Codec..= moveAffinity
         <*> Codec.optionalFieldWithOmittedDefault "attackStat" "attack" "Offensive stat identifier." Codec..= moveAttackStat
         <*> Codec.optionalFieldWithOmittedDefaultWith "criticalRate" NumberCodec.probabilityCodec 0 "Critical probability before game rules." Codec..= moveCriticalRate
         <*> Codec.optionalFieldWithOmittedDefault "defenseStat" "defense" "Defensive stat identifier." Codec..= moveDefenseStat
@@ -49,6 +48,7 @@ instance HasCodec Move where
         <*> Codec.requiredField "name" "Display name." Codec..= moveName
         <*> Codec.optionalFieldWithOmittedDefault "power" 0 "Nonnegative base power." Codec..= movePower
         <*> Codec.optionalFieldWithOmittedDefault "priority" 0 "Higher values act first." Codec..= movePriority
+        <*> Codec.optionalFieldWithOmittedDefault "type" "normal" "Game-defined type." Codec..= moveType
     where
       validate value
         | moveAccuracy value < 0 || moveAccuracy value > 1 = Left "Move accuracy must be between zero and one."
@@ -56,5 +56,5 @@ instance HasCodec Move where
         | moveMinHits value < 1 || moveMaxHits value < moveMinHits value || moveMaxHits value > 100 = Left "Hit counts must satisfy 1 <= minHits <= maxHits <= 100."
         | any (\count -> count < moveMinHits value || count > moveMaxHits value) (Map.keys (moveHitWeights value)) || any (< 1) (Map.elems (moveHitWeights value)) = Left "Hit weights must be positive and within the configured hit range."
         | moveMaxUses value < 0 || movePower value < 0 = Left "Move power and uses must not be negative."
-        | any (Text.null . Text.strip) [moveName value, moveAffinity value, moveAttackStat value, moveDefenseStat value] = Left "Move names and identifiers must not be blank."
+        | any (Text.null . Text.strip) [moveName value, moveType value, moveAttackStat value, moveDefenseStat value] = Left "Move names and identifiers must not be blank."
         | otherwise = Right value

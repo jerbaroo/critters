@@ -26,14 +26,14 @@ accuracyFor context side move =
 
 damageFor :: Context -> Side -> Move -> Double -> Double -> Int
 damageFor context side move critical variance
-  | Move.movePower move <= 0 || affinity == 0 = 0
+  | Move.movePower move <= 0 || typeMultiplier == 0 = 0
   | otherwise =
       max (Rules.rulesMinimumDamage rules)
         $ integer
         $ Common.evaluate
           0
           (Rules.rulesDamageFormula rules)
-          [ ("affinity", affinity),
+          [ ("affinity", typeMultiplier),
             ("attack", attack),
             ("baseAttack", baseAttack),
             ("baseDefense", baseDefense),
@@ -46,12 +46,12 @@ damageFor context side move critical variance
             ("variance", variance)
           ]
   where
-    affinity = product [Map.findWithDefault 1 defending (Map.findWithDefault Map.empty (Move.moveAffinity move) (Rules.rulesAffinityChart rules)) | defending <- affinities (Common.opposite side)]
-    affinities participant = maybe [] (maybe [] Species.speciesAffinities . (\critter -> Map.lookup (Critter.species critter) (Config.configSpecies (battleConfig (contextBattle context))))) (Common.active participant context)
+    typeMultiplier = product [Map.findWithDefault 1 defending (Map.findWithDefault Map.empty (Move.moveType move) (Rules.rulesTypeChart rules)) | defending <- typesFor (Common.opposite side)]
+    typesFor participant = maybe [] (maybe [] Species.speciesTypes . (\critter -> Map.lookup (Critter.species critter) (Config.configSpecies (battleConfig (contextBattle context))))) (Common.active participant context)
     attack = if critical > 1 && Rules.rulesCriticalIgnoresStages rules then baseAttack else Common.stat context side (Move.moveAttackStat move)
     baseAttack = Common.baseStat context side (Move.moveAttackStat move)
     baseDefense = Common.baseStat context (Common.opposite side) (Move.moveDefenseStat move)
     defense = if critical > 1 && Rules.rulesCriticalIgnoresStages rules then baseDefense else Common.stat context (Common.opposite side) (Move.moveDefenseStat move)
     level participant = maybe 1 (number . Critter.level) (Common.active participant context)
     rules = Common.rulesFor context
-    sameAffinity = if Move.moveAffinity move `elem` affinities side then Rules.rulesSameAffinityBonus rules else 1
+    sameAffinity = if Move.moveType move `elem` typesFor side then Rules.rulesSameAffinityBonus rules else 1

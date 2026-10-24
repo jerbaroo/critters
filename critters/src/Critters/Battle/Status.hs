@@ -60,8 +60,8 @@ applyEffect actor damage effect = do
       Common.emit "Status cleared."
     InflictStatus target identifier -> case (Common.active (destination target) context, Map.lookup identifier (Config.configStatuses (battleConfig (contextBattle context)))) of
       (Just critter, Just definition) | Common.usable critter && not (isJust (Profile.profileStatus (Critter.battleProfile critter))) -> do
-        let affinities = maybe [] Species.speciesAffinities (Map.lookup (Critter.species critter) (Config.configSpecies (battleConfig (contextBattle context))))
-        if any (`elem` Status.statusImmuneAffinities definition) affinities
+        let critterTypes = maybe [] Species.speciesTypes (Map.lookup (Critter.species critter) (Config.configSpecies (battleConfig (contextBattle context))))
+        if any (`elem` Status.statusImmuneTypes definition) critterTypes
           then Common.emit "The status had no effect."
           else do
             duration <- if Status.statusDurationMax definition == 0 then pure Nothing else Just <$> Common.chooseInt (Status.statusDurationMin definition) (Status.statusDurationMax definition)

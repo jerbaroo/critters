@@ -16,7 +16,7 @@ defaultStatus =
       statusDamageFraction = 0,
       statusDurationMax = 0,
       statusDurationMin = 0,
-      statusImmuneAffinities = [],
+      statusImmuneTypes = [],
       statusName = "",
       statusStatMultipliers = Map.empty,
       statusTickOnApply = False
@@ -28,7 +28,7 @@ data StatusDefinition = StatusDefinition
     statusDamageFraction :: Double,
     statusDurationMax :: Int,
     statusDurationMin :: Int,
-    statusImmuneAffinities :: [Text],
+    statusImmuneTypes :: [Text],
     statusName :: Text,
     statusStatMultipliers :: Map Text Double,
     statusTickOnApply :: Bool
@@ -46,7 +46,7 @@ instance HasCodec StatusDefinition where
         <*> Codec.optionalFieldWithOmittedDefaultWith "damageFraction" NumberCodec.probabilityCodec (0) "Fraction of maximum HP lost per turn." Codec..= statusDamageFraction
         <*> Codec.optionalFieldWithOmittedDefault "durationMax" (0) "Maximum duration; both durations zero means persistent." Codec..= statusDurationMax
         <*> Codec.optionalFieldWithOmittedDefault "durationMin" (0) "Minimum duration." Codec..= statusDurationMin
-        <*> Codec.optionalFieldWithOmittedDefault "immuneAffinities" ([]) "Affinities immune to this status." Codec..= statusImmuneAffinities
+        <*> Codec.optionalFieldWithOmittedDefault "immuneTypes" ([]) "Types immune to this status." Codec..= statusImmuneTypes
         <*> Codec.optionalFieldWithOmittedDefault "name" ("") "Display name." Codec..= statusName
         <*> Codec.optionalFieldWithOmittedDefaultWith "statMultipliers" (Codec.mapCodec NumberCodec.finiteDoubleCodec) (Map.empty) "Stat multipliers while afflicted." Codec..= statusStatMultipliers
         <*> Codec.optionalFieldWithOmittedDefault "tickOnApply" (False) "Whether residual damage applies on the turn of infliction." Codec..= statusTickOnApply

@@ -50,7 +50,7 @@ learn context critter newLevel
     current = contextBattle context
     definition = Map.findWithDefault Species.defaultSpecies (Critter.species critter) (Config.configSpecies (battleConfig current))
     learned = concatMap snd (filter (\(level, _) -> level > Critter.level critter && level <= newLevel) (Map.toAscList (Species.speciesLearnset definition)))
-    maximumHP = max 1 (integer (Common.evaluate (number (Critter.maxHitPoints critter)) (Rules.rulesHealthFormula (Common.rulesFor context)) [("base", number (Map.findWithDefault (Critter.maxHitPoints critter) "health" (Species.speciesStats definition))), ("level", number newLevel)]))
+    maximumHP = max 1 (integer (Common.evaluate (number (Critter.maxHitPoints critter)) (Rules.rulesHealthFormula (Common.rulesFor context)) [("base", number (Map.findWithDefault (Critter.maxHitPoints critter) "health" (Species.unBaseStats (Species.speciesStats definition)))), ("level", number newLevel)]))
     updated =
       critter
         { Critter.battleProfile = (Critter.battleProfile critter){Profile.profileKnownMoves = nub (Common.knownMoves current critter <> learned)},

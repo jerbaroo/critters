@@ -1,4 +1,4 @@
-module Critters.State.Species (defaultSpecies, Species (..)) where
+module Critters.State.Species (BaseStats (..), defaultSpecies, Species (..)) where
 
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
@@ -9,24 +9,31 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 
+newtype BaseStats = BaseStats{unBaseStats :: Map Text Int}
+  deriving stock (Eq)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BaseStats)
+
+instance HasCodec BaseStats where
+  codec = Codec.dimapCodec BaseStats unBaseStats (Codec.mapCodec Codec.codec)
+
 defaultSpecies :: Species
 defaultSpecies =
   Species
-    { speciesAffinities = [],
-      speciesCaptureRate = 0.5,
+    { speciesCaptureRate = 0.5,
       speciesExperienceYield = 10,
       speciesLearnset = Map.empty,
       speciesName = "",
-      speciesStats = Map.fromList [("attack", 10), ("defense", 10), ("health", 20), ("speed", 10)]
+      speciesStats = BaseStats (Map.fromList [("attack", 10), ("defense", 10), ("health", 20), ("speed", 10)]),
+      speciesTypes = []
     }
 
 data Species = Species
-  { speciesAffinities :: [Text],
-    speciesCaptureRate :: Double,
+  { speciesCaptureRate :: Double,
     speciesExperienceYield :: Int,
     speciesLearnset :: Map Int [MoveId],
     speciesName :: Text,
-    speciesStats :: Map Text Int
+    speciesStats :: BaseStats,
+    speciesTypes :: [Text]
   }
   deriving stock (Eq)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Species)
@@ -36,14 +43,14 @@ instance HasCodec Species where
     Codec.bimapCodec validate id
       $ Codec.object "Species"
       $ Species
-        <$> Codec.optionalFieldWithOmittedDefault "affinities" ([]) "Game-defined affinities." Codec..= speciesAffinities
-        <*> Codec.optionalFieldWithOmittedDefaultWith "captureRate" NumberCodec.probabilityCodec (0.5) "Base capture probability." Codec..= speciesCaptureRate
+        <$> Codec.optionalFieldWithOmittedDefaultWith "captureRate" NumberCodec.probabilityCodec (0.5) "Base capture probability." Codec..= speciesCaptureRate
         <*> Codec.optionalFieldWithOmittedDefault "experienceYield" (10) "Experience awarded by this species." Codec..= speciesExperienceYield
         <*> Codec.optionalFieldWithOmittedDefault "learnset" (Map.empty) "Moves learned at each level." Codec..= speciesLearnset
         <*> Codec.optionalFieldWithOmittedDefault "name" ("") "Optional display name." Codec..= speciesName
-        <*> Codec.optionalFieldWithOmittedDefault "stats" (Map.fromList [("attack", 10), ("defense", 10), ("health", 20), ("speed", 10)]) "Positive base stats; move definitions choose stat identifiers." Codec..= speciesStats
+        <*> Codec.optionalFieldWithOmittedDefault "baseStats" (BaseStats (Map.fromList [("attack", 10), ("defense", 10), ("health", 20), ("speed", 10)])) "Positive base stats; move definitions choose stat identifiers." Codec..= speciesStats
+        <*> Codec.optionalFieldWithOmittedDefault "types" ([]) "Game-defined types." Codec..= speciesTypes
     where
       validate value
         | speciesExperienceYield value < 0 = Left "Experience yield must not be negative."
-        | any (< 1) (Map.keys (speciesLearnset value)) || any (< 1) (Map.elems (speciesStats value)) = Left "Learnset levels and base stats must be positive."
+        | any (< 1) (Map.keys (speciesLearnset value)) || any (< 1) (Map.elems (unBaseStats (speciesStats value))) = Left "Learnset levels and base stats must be positive."
         | otherwise = Right value

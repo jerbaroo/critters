@@ -1,4 +1,4 @@
-module Critters.Battle.Engine (beginBattle, commandFor, completionEffects, eventsFor) where
+module Critters.Battle.Engine (beginBattle, beginEncounter, commandFor, completionEffects, eventsFor) where
 
 import Critters.Battle.Common (Context (..))
 import Critters.Battle.Common qualified as Common
@@ -8,25 +8,52 @@ import Critters.Command (Command (..))
 import Critters.Event (Event)
 import Critters.Input (Input)
 import Critters.Input qualified as Input
+import Critters.Number qualified as Number
 import Critters.State.Battle (Battle (..), defaultBattle)
+import Critters.State.BattleDefinition (BattleDefinition)
 import Critters.State.BattleDefinition qualified as Definition
 import Critters.State.BattleOutcome (BattleOutcome (..))
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.CombatConfig qualified as Config
+import Critters.State.Critter qualified as Critter
 import Critters.State.Effect (Effect)
+import Critters.State.EncounterEntry (EncounterEntry)
+import Critters.State.EncounterEntry qualified as Entry
 import Critters.State.GameState (GameState (..))
 import Critters.State.Party qualified as Party
+import Critters.State.Rules qualified as Rules
+import Critters.State.Species qualified as Species
 import Data.List (findIndex)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
+import Data.Text qualified as Text
 
 beginBattle :: GameState -> Text -> Either Text Battle
-beginBattle state identifier
+beginBattle state identifier =
+  maybe (Left "That battle is not defined.") (beginDefinition state) (Map.lookup identifier (Config.configBattles (combat state)))
+
+beginEncounter :: GameState -> EncounterEntry -> Either Text Battle
+beginEncounter state entry = do
+  species <- maybe (Left "That encounter species is not defined.") Right (Map.lookup (Entry.entrySpecies entry) (Config.configSpecies (combat state)))
+  let level = Entry.entryLevel entry
+      baseHealth = Map.findWithDefault (Map.findWithDefault 20 "health" (Species.unBaseStats (Species.speciesStats Species.defaultSpecies))) "health" (Species.unBaseStats (Species.speciesStats species))
+      hitPoints = max 1 $ Number.integer $ Common.evaluate (Number.number baseHealth) (Rules.rulesHealthFormula (Config.configRules (combat state))) [("base", Number.number baseHealth), ("level", Number.number level)]
+      displayName = if Text.null (Text.strip (Species.speciesName species)) then Entry.entrySpecies entry else Species.speciesName species
+      definition =
+        Definition.defaultDefinition
+          { Definition.definitionAllowCapture = Entry.entryAllowCapture entry,
+            Definition.definitionAllowEscape = Entry.entryAllowEscape entry,
+            Definition.definitionName = "Wild " <> displayName,
+            Definition.definitionOpponents = [Critter.basicCritter hitPoints level hitPoints (Entry.entrySpecies entry)]
+          }
+  beginDefinition state definition
+
+beginDefinition :: GameState -> BattleDefinition -> Either Text Battle
+beginDefinition state definition
   | isJust (battle state) = Left "A battle is already in progress."
   | partyOpen state = Left "Close your party before starting a battle."
   | otherwise = do
-      definition <- maybe (Left "That battle is not defined.") Right (Map.lookup identifier (Config.configBattles (combat state)))
       player <- maybe (Left "You need a conscious critter to battle.") Right (findIndex Common.usable (Party.members (party state)))
       opponent <- maybe (Left "There are no conscious opponents.") Right (findIndex Common.usable (Definition.definitionOpponents definition))
       if length (Definition.definitionOpponents definition) > maxPartySize state
