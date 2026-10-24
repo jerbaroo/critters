@@ -31,6 +31,7 @@ import Critters.State.MoveId (MoveId (..))
 import Critters.State.Party (Party (..))
 import Critters.State.Rules (Rules (..), defaultRules)
 import Critters.State.Species (Species (..), defaultSpecies)
+import Critters.State.StatusDefinition (StatusDefinition (..), defaultStatus)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
@@ -50,7 +51,7 @@ fixture = initialState
     party = Party [basicCritter 20 2 20 "leafling"]
   }
   where
-    definition = defaultSpecies{speciesLearnset = Map.singleton 1 [MoveId "strike"]}
+    definition = defaultSpecies{speciesExperienceYield = 0, speciesLearnset = Map.singleton 1 [MoveId "strike"]}
 
 lifecycleTests :: TestTree
 lifecycleTests = testGroup "Battle entry"
@@ -110,12 +111,47 @@ snapshotTests = testGroup "Battle snapshots"
       assertBool "Expected nonnegative inventory counts" (isLeft (Aeson.eitherDecode @GameState "{\"version\":1,\"maps\":{},\"playerPosition\":{\"x\":0,\"y\":0},\"inventory\":{\"tonic\":-1}}"))
   ]
 
+statusTests :: TestTree
+statusTests = testGroup "Status and move effects"
+  [ testCase "Block an action without spending uses and expire a timed status" $
+      let configured = configure defaultMove{movePower = 0, moveEffects = [InflictStatus Opponent "wither"]} defaultStatus{statusBlockChance = 1, statusDurationMin = 1, statusDurationMax = 1, statusTickOnApply = True}
+          opened = start configured
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "technique")))
+       in assertBool "Expected a blocked opponent, no retaliation, and status expiry" (map hitPoints (members (party result)) == [20] && fmap (map (profileStatus . battleProfile) . battleOpponentParty) (battle result) == Just [Nothing] && fmap (map (profileRemainingUses . battleProfile) . battleOpponentParty) (battle result) == Just [Map.empty]),
+    testCase "Apply residual damage for the configured duration" $
+      let configured = configure defaultMove{movePower = 0, moveEffects = [InflictStatus Opponent "wither"]} defaultStatus{statusDamageFraction = 0.25, statusDurationMin = 2, statusDurationMax = 2, statusTickOnApply = True}
+          opened = start configured
+          first = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "technique")))
+          second = foldl' Engine.applyEvent first (Turn.resolveAction first (UseMove (MoveId "technique")))
+       in assertBool "Expected bounded residual HP loss and eventual recovery" (fmap (map hitPoints . battleOpponentParty) (battle first) == Just [8] && fmap (map hitPoints . battleOpponentParty) (battle second) == Just [6] && fmap (map (profileStatus . battleProfile) . battleOpponentParty) (battle second) == Just [Nothing]),
+    testCase "Clamp stat stages and clear them on a configured switch" $
+      let configured = configure defaultMove{movePower = 0, moveEffects = [ChangeStage Self "attack" maxBound]} defaultStatus
+          opened = start configured{party = Party (members (party configured) <> [basicCritter 10 2 10 "leafling"])}
+          boosted = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "technique")))
+          switched = foldl' Engine.applyEvent boosted (Turn.resolveAction boosted (SwitchCritter 1))
+       in assertBool "Expected the game limit and switch reset" (fmap (Map.lookup "attack" . battlePlayerStages) (battle boosted) == Just (Just 6) && fmap battlePlayerStages (battle switched) == Just Map.empty),
+    testCase "Use actual total damage for drain effects" $
+      let configured = configure defaultMove{movePower = 5, moveMinHits = 2, moveMaxHits = 2, moveEffects = [ChangeHealth Self (Formula "damage / 2")]} defaultStatus
+          opened = start configured{party = Party [((basicCritter 10 2 20 "leafling"){battleProfile = defaultProfile{profileKnownMoves = [MoveId "technique"]}})]}
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "technique")))
+       in assertBool "Expected drain from both hits before the battle ends" (map hitPoints (members (party result)) == [15] && fmap battleOutcome (battle result) == Just (Just Victory)),
+    testCase "Configure simultaneous final faint outcomes" $
+      let configured = configure defaultMove{movePower = 10, moveEffects = [ChangeHealth Self (Formula "-hp")]} defaultStatus
+          opened = start configured
+          lost = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "technique")))
+          alternative = start configured{combat = (combat configured){configRules = (configRules (combat configured)){rulesSimultaneousDefeatWins = True}}}
+          won = foldl' Engine.applyEvent alternative (Turn.resolveAction alternative (UseMove (MoveId "technique")))
+       in assertBool "Expected the authored outcome policy" (fmap battleOutcome (battle lost) == Just (Just Defeat) && fmap battleOutcome (battle won) == Just (Just Victory))
+  ]
+  where
+    configure move status = fixture{combat = (combat fixture){configMoves = Map.insert (MoveId "technique") move (configMoves (combat fixture)), configStatuses = Map.singleton "wither" status}, party = Party [(basicCritter 20 2 20 "leafling"){battleProfile = defaultProfile{profileKnownMoves = [MoveId "technique"]}}]}
+
 start :: GameState -> GameState
 start state = either (const state) (\active -> state{battle = Just active}) (BattleEngine.beginBattle state "practice")
 
 tests :: TestTree
 tests = testGroup "Battle"
-  [ lifecycleTests, profileTests, snapshotTests, turnTests, variationTests, viewTests,
+  [ lifecycleTests, profileTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)

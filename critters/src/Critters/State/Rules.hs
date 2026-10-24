@@ -41,7 +41,9 @@ defaultRules = Rules
     rulesMinimumDamage = 1,
     rulesRandomDamageMax = 1,
     rulesRandomDamageMin = 1,
+    rulesResetStagesOnSwitch = True,
     rulesSameAffinityBonus = 1.5,
+    rulesSimultaneousDefeatWins = False,
     rulesSpeedStat = "speed",
     rulesStageLimit = 6,
     rulesStageMultiplierFormula = Formula "if(stage >= 0, (2 + stage) / 2, 2 / (2 - stage))",
@@ -79,7 +81,9 @@ data Rules = Rules
     rulesMinimumDamage :: Int,
     rulesRandomDamageMax :: Double,
     rulesRandomDamageMin :: Double,
+    rulesResetStagesOnSwitch :: Bool,
     rulesSameAffinityBonus :: Double,
+    rulesSimultaneousDefeatWins :: Bool,
     rulesSpeedStat :: Text,
     rulesStageLimit :: Int,
     rulesStageMultiplierFormula :: Formula,
@@ -120,7 +124,9 @@ instance HasCodec Rules where
     <*> Codec.optionalFieldWithOmittedDefault "minimumDamage" (1) "Minimum damage of a nonimmune damaging hit." Codec..= rulesMinimumDamage
     <*> Codec.optionalFieldWithOmittedDefaultWith "randomDamageMax" NumberCodec.finiteDoubleCodec (1) "Upper damage variance multiplier." Codec..= rulesRandomDamageMax
     <*> Codec.optionalFieldWithOmittedDefaultWith "randomDamageMin" NumberCodec.finiteDoubleCodec (1) "Lower damage variance multiplier." Codec..= rulesRandomDamageMin
+    <*> Codec.optionalFieldWithOmittedDefault "resetStagesOnSwitch" True "Clear temporary stages when switching." Codec..= rulesResetStagesOnSwitch
     <*> Codec.optionalFieldWithOmittedDefaultWith "sameAffinityBonus" NumberCodec.finiteDoubleCodec (1.5) "Multiplier when a move matches an attacking affinity." Codec..= rulesSameAffinityBonus
+    <*> Codec.optionalFieldWithOmittedDefault "simultaneousDefeatWins" False "Treat a simultaneous final faint as a victory." Codec..= rulesSimultaneousDefeatWins
     <*> Codec.optionalFieldWithOmittedDefault "speedStat" ("speed") "Stat used to order actions." Codec..= rulesSpeedStat
     <*> Codec.optionalFieldWithOmittedDefault "stageLimit" (6) "Absolute limit on temporary stat stages." Codec..= rulesStageLimit
     <*> Codec.optionalFieldWithOmittedDefault "stageMultiplierFormula" (Formula "if(stage >= 0, (2 + stage) / 2, 2 / (2 - stage))") "Temporary stat multiplier." Codec..= rulesStageMultiplierFormula

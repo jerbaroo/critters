@@ -174,7 +174,7 @@ setStage side identifier delta context = context{contextBattle = updated}
     current = contextBattle context
     limit = Rules.rulesStageLimit (rulesFor context)
     stages = (if side == Player then battlePlayerStages else battleEnemyStages) current
-    next = Map.insert identifier (max (-limit) (min limit (Map.findWithDefault 0 identifier stages + delta))) stages
+    next = Map.insert identifier (max (-limit) (min limit (max (-limit) (min limit (Map.findWithDefault 0 identifier stages)) + max (-limit) (min limit delta)))) stages
     updated = if side == Player then current{battlePlayerStages = next} else current{battleEnemyStages = next}
 
 data Side = Enemy | Player

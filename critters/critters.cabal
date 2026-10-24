@@ -71,6 +71,7 @@ library
         Critters.Battle.Common
         Critters.Battle.Engine
         Critters.Battle.Menu
+        Critters.Battle.Status
         Critters.Battle.Turn
         Critters.CLI
         Critters.CLI.Options
