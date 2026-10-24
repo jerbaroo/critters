@@ -53,6 +53,41 @@ fixture = initialState
   where
     definition = defaultSpecies{speciesExperienceYield = 0, speciesLearnset = Map.singleton 1 [MoveId "strike"]}
 
+itemTests :: TestTree
+itemTests = testGroup "Battle items and escape"
+  [ testCase "Heal a chosen party member and consume a turn" $
+      let opened = start fixture{inventory = Map.singleton "tonic" 1, party = Party [basicCritter 10 2 20 "leafling"]}
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseItem "tonic" 0))
+       in assertBool "Expected healing followed by retaliation and item consumption" (map hitPoints (members (party result)) == [10] && inventory result == Map.singleton "tonic" 0 && fmap battleTurn (battle result) == Just 1),
+    testCase "Ineffective items consume neither stock nor a turn" $
+      let opened = start fixture{inventory = Map.singleton "tonic" 1}
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseItem "tonic" 0))
+       in assertBool "Expected a visible rejection without any resource change" (party result == party opened && inventory result == inventory opened && fmap battleTurn (battle result) == Just 0 && maybe False (any (Text.isInfixOf "no effect") . battleMessages) (battle result)),
+    testCase "Capture a configured opponent and preserve its state" $
+      let opened = start capturable
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseItem "capsule" (-1)))
+       in assertBool "Expected a bounded party addition and a recorded capture" (map species (members (party result)) == ["leafling", "stonekin"] && map hitPoints (members (party result)) == [20,10] && inventory result == Map.singleton "capsule" 0 && fmap battleOutcome (battle result) == Just (Just Captured)),
+    testCase "Reject full-party and forbidden capture attempts" $ do
+      let full = start capturable{maxPartySize = 1}
+          unchanged = foldl' Engine.applyEvent full (Turn.resolveAction full (UseItem "capsule" (-1)))
+          forbidden = start capturable{combat = (combat capturable){configBattles = Map.adjust (\definition -> definition{definitionAllowCapture = False}) "practice" (configBattles (combat capturable))}}
+          denied = foldl' Engine.applyEvent forbidden (Turn.resolveAction forbidden (UseItem "capsule" (-1)))
+      assertBool "Expected full-party rejection without consuming the item" (party unchanged == party full && inventory unchanged == inventory full && fmap battleTurn (battle unchanged) == Just 0)
+      assertBool "Expected capture permissions to be enforced" (party denied == party forbidden && inventory denied == inventory forbidden),
+    testCase "Failed captures consume the item and permit retaliation" $
+      let opened = start capturable{combat = (combat capturable){configRules = (configRules (combat capturable)){rulesCaptureFormula = Formula "0"}}}
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseItem "capsule" (-1)))
+       in assertBool "Expected the failed attempt to spend a turn" (map hitPoints (members (party result)) == [15] && inventory result == Map.singleton "capsule" 0 && fmap battleOutcome (battle result) == Just Nothing),
+    testCase "Escape uses the configured formula and previous failures" $
+      let configured = fixture{combat = (combat fixture){configBattles = Map.adjust (\definition -> definition{definitionAllowEscape = True}) "practice" (configBattles (combat fixture)), configRules = (configRules (combat fixture)){rulesEscapeFormula = Formula "if(attempts >= 1, 1, 0)"}}}
+          opened = start configured
+          failed = foldl' Engine.applyEvent opened (Turn.resolveAction opened EscapeBattle)
+          escaped = foldl' Engine.applyEvent failed (Turn.resolveAction failed EscapeBattle)
+       in assertBool "Expected a failed attempt followed by safe escape" (fmap battleEscapeAttempts (battle failed) == Just 1 && map hitPoints (members (party escaped)) == [15] && fmap battleOutcome (battle escaped) == Just (Just Escaped))
+  ]
+  where
+    capturable = fixture{combat = (combat fixture){configBattles = Map.adjust (\definition -> definition{definitionAllowCapture = True}) "practice" (configBattles (combat fixture)), configItems = Map.singleton "capsule" defaultItem{itemCaptureBonus = 1}, configRules = (configRules (combat fixture)){rulesCaptureFormula = Formula "1"}}, inventory = Map.singleton "capsule" 1}
+
 lifecycleTests :: TestTree
 lifecycleTests = testGroup "Battle entry"
   [ testCase "Start a configured battle and block exploration" $
@@ -151,7 +186,7 @@ start state = either (const state) (\active -> state{battle = Just active}) (Bat
 
 tests :: TestTree
 tests = testGroup "Battle"
-  [ lifecycleTests, profileTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
+  [ itemTests, lifecycleTests, profileTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)

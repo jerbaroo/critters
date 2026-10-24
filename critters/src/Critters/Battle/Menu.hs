@@ -31,7 +31,7 @@ entries state = case Common.contextFor state of
       | count <= 0 = Nothing
       | otherwise = do
           definition <- Map.lookup identifier (Config.configItems (Battle.battleConfig (Common.contextBattle context)))
-          pure ((if Item.itemName definition == "" then identifier else Item.itemName definition) <> " x" <> from (show count), if Item.itemCaptureBonus definition > 0 then Perform (UseItem identifier (-1)) else PickItem identifier)
+          if Item.itemCaptureBonus definition > 0 && not (Definition.definitionAllowCapture (Battle.battleDefinition (Common.contextBattle context))) then Nothing else pure ((if Item.itemName definition == "" then identifier else Item.itemName definition) <> " x" <> from (show count), if Item.itemCaptureBonus definition > 0 then Perform (UseItem identifier (-1)) else PickItem identifier)
     partyEntries context targeting =
       [ (Critter.species critter <> "  HP " <> from (show (Critter.hitPoints critter)) <> "/" <> from (show (Critter.maxHitPoints critter)), Perform (if targeting then UseItem (maybe "" id (Battle.battleSelectedItem (Common.contextBattle context))) index else SwitchCritter index))
       | (index, critter) <- zip [0 ..] (Common.allCritters Common.Player context),

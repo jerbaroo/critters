@@ -6,10 +6,12 @@ import Control.Monad.Trans.State.Strict qualified as State
 import Critters.Battle.Action (Action (..))
 import Critters.Battle.Common (Context (..), Side (..))
 import Critters.Battle.Common qualified as Common
+import Critters.Battle.Items qualified as Items
 import Critters.Battle.Status qualified as Status
 import Critters.Event (Event)
 import Critters.Number (integer, number)
 import Critters.State.Battle (Battle (..))
+import Critters.State.BattleDefinition qualified as Definition
 import Critters.State.BattleOutcome (BattleOutcome (..))
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.BattleProfile qualified as Profile
@@ -64,22 +66,13 @@ damageFor context side move critical variance
 
 executeAction :: Side -> Action -> State Context ()
 executeAction side = \case
-  EscapeBattle -> pure ()
+  EscapeBattle -> Items.escape
   SwitchCritter index -> switch side index
-  UseItem _ _ -> pure ()
+  UseItem identifier target -> Items.useItem identifier target
   UseMove identifier -> Status.beforeAction side >>= \allowed -> when allowed (performMove side identifier)
 
 finish :: BattleOutcome -> State Context ()
-finish outcome = do
-  State.modify $ \context -> context
-    { contextBattle = (contextBattle context){battleOutcome = Just outcome, battlePhase = Finished, battleSelected = 0},
-      contextParty = if outcome == Defeat then Common.healParty (Rules.rulesDefeatRecovery (Common.rulesFor context)) (contextParty context) else contextParty context
-    }
-  Common.emit $ case outcome of
-    Captured -> "Capture complete."
-    Defeat -> "Defeat."
-    Escaped -> "Escaped safely."
-    Victory -> "Victory."
+finish = Common.endBattle
 
 performMove :: Side -> MoveId -> State Context ()
 performMove side identifier = do
@@ -128,6 +121,12 @@ performMove side identifier = do
 resolveAction :: GameState -> Action -> [Event]
 resolveAction state action = case Common.contextFor state of
   Just context | validAction context action -> Common.changedEvents state (State.execState (runTurn action) context)
+  Just context | not (isJust (battleOutcome (contextBattle context))) && battlePhase (contextBattle context) /= ReplacementMenu -> case action of
+    UseItem identifier target -> case Items.validateItem context identifier target of
+      Left message -> Common.changedEvents state context{contextBattle = (contextBattle context){battleMessages = [message]}}
+      Right _ -> []
+    EscapeBattle -> Common.changedEvents state context{contextBattle = (contextBattle context){battleMessages = ["Escape is not permitted in this battle."]}}
+    _ -> []
   _ -> []
 
 runTurn :: Action -> State Context ()
@@ -187,9 +186,9 @@ validAction context action
       SwitchCritter index -> validSwitch index
       _ -> False
   | otherwise = case action of
-      EscapeBattle -> False
+      EscapeBattle -> Definition.definitionAllowEscape (battleDefinition (contextBattle context))
       SwitchCritter index -> validSwitch index
-      UseItem _ _ -> False
+      UseItem identifier target -> either (const False) (const True) (Items.validateItem context identifier target)
       UseMove identifier -> isJust (lookup identifier (Common.availableMoves Player context))
   where
     validSwitch index = index >= 0 && index /= Common.activeIndex Player context && maybe False Common.usable (case drop index (Common.allCritters Player context) of value : _ -> Just value; [] -> Nothing)

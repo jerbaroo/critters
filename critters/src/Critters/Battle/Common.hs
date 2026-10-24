@@ -1,7 +1,7 @@
 -- | Pure battle operations shared by turn resolution, menus and encounters.
 module Critters.Battle.Common
   ( active, activeIndex, allCritters, availableMoves, baseStat, changedEvents, chance,
-    chooseInt, chooseWeighted, Context (..), contextFor, emit, evaluate, healParty, knownMoves,
+    chooseInt, chooseWeighted, Context (..), contextFor, emit, endBattle, evaluate, healParty, knownMoves,
     modifyActive, modifyAt, moveRemaining, opposite, randomUnit, rulesFor,
     setCritter, setStage, Side (..), stageFactor, stat, statsFor, usable
   ) where
@@ -15,6 +15,8 @@ import Critters.Formula qualified as Formula
 import Critters.Number (integer, number)
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.Battle (Battle (..))
+import Critters.State.BattleOutcome (BattleOutcome (..))
+import Critters.State.BattlePhase (BattlePhase (Finished))
 import Critters.State.BattleProfile qualified as Profile
 import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.CombatConfig qualified as Config
@@ -116,6 +118,18 @@ contextFor state = (\activeBattle -> Context activeBattle (inventory state) (max
 
 emit :: Text -> State Context ()
 emit message = State.modify $ \context -> context{contextBattle = (contextBattle context){battleMessages = battleMessages (contextBattle context) <> [message]}}
+
+endBattle :: BattleOutcome -> State Context ()
+endBattle outcome = do
+  State.modify $ \context -> context
+    { contextBattle = (contextBattle context){battleOutcome = Just outcome, battlePhase = Finished, battleSelected = 0},
+      contextParty = if outcome == Defeat then healParty (Rules.rulesDefeatRecovery (rulesFor context)) (contextParty context) else contextParty context
+    }
+  emit $ case outcome of
+    Captured -> "Capture complete."
+    Defeat -> "Defeat."
+    Escaped -> "Escaped safely."
+    Victory -> "Victory."
 
 evaluate :: Double -> Formula -> [(Text, Double)] -> Double
 evaluate fallback formula environment = either (const fallback) id (Formula.evaluate (Map.fromList environment) formula)

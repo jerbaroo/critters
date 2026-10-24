@@ -70,6 +70,7 @@ library
         Critters.Battle.Action
         Critters.Battle.Common
         Critters.Battle.Engine
+        Critters.Battle.Items
         Critters.Battle.Menu
         Critters.Battle.Status
         Critters.Battle.Turn

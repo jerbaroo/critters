@@ -15,6 +15,7 @@ import Data.Text (Text)
 data Battle = Battle
   { battleActiveOpponent :: Int,
     battleActivePlayer :: Int,
+    battleCapturedOpponents :: [Int],
     battleConfig :: CombatConfig,
     battleDefinition :: BattleDefinition,
     battleEnemyStages :: Map Text Int,
@@ -36,6 +37,7 @@ defaultBattle :: Battle
 defaultBattle = Battle
   { battleActiveOpponent = 0,
     battleActivePlayer = 0,
+    battleCapturedOpponents = [],
     battleConfig = defaultCombat,
     battleDefinition = defaultDefinition,
     battleEnemyStages = Map.empty,
@@ -55,6 +57,7 @@ instance HasCodec Battle where
   codec = Codec.bimapCodec validate id $ Codec.object "Battle" $ Battle
     <$> Codec.optionalFieldWithOmittedDefault "activeOpponent" (0) "Active opposing party index." Codec..= battleActiveOpponent
     <*> Codec.optionalFieldWithOmittedDefault "activePlayer" (0) "Active player party index." Codec..= battleActivePlayer
+    <*> Codec.optionalFieldWithOmittedDefault "capturedOpponents" [] "Opponents captured during this battle." Codec..= battleCapturedOpponents
     <*> Codec.optionalFieldWithOmittedDefault "config" (defaultCombat) "Configuration snapshot selected at entry." Codec..= battleConfig
     <*> Codec.optionalFieldWithOmittedDefault "definition" (defaultDefinition) "Battle definition snapshot." Codec..= battleDefinition
     <*> Codec.optionalFieldWithOmittedDefault "enemyStages" (Map.empty) "Temporary opposing stat stages." Codec..= battleEnemyStages
