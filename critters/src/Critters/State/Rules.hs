@@ -6,6 +6,7 @@ import Critters.Codec qualified as NumberCodec
 import Critters.Formula qualified as Formula
 import Critters.Formula (Formula (..))
 import Critters.State.Move (Move, defaultMove)
+import Critters.State.Move qualified as Move
 import Data.Aeson qualified as Aeson
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -14,6 +15,7 @@ import Data.Text (Text)
 defaultRules :: Rules
 defaultRules = Rules
   { rulesAccuracyFormula = Formula "accuracy * accuracyStage / evasionStage",
+    rulesAccuracyPerHit = False,
     rulesAccuracyStageFormula = Formula "if(stage >= 0, (3 + stage) / 3, 3 / (3 - stage))",
     rulesAffinityChart = Map.empty,
     rulesAiScoreFormula = Formula "damage * accuracy + heal * if(hpRatio < 0.4, 2, 0.2) + status * 2",
@@ -22,6 +24,7 @@ defaultRules = Rules
     rulesCriticalFormula = Formula "criticalRate",
     rulesCriticalIgnoresStages = False,
     rulesCriticalMultiplierFormula = Formula "2",
+    rulesCriticalPerHit = True,
     rulesDamageFormula = Formula "max(1, floor(power * attack / defense / 5 * critical * affinity * sameAffinity * variance))",
     rulesDefeatRecovery = 1,
     rulesEscapeFormula = Formula "speed / max(1, enemySpeed) / 2 + attempts / 4",
@@ -50,6 +53,7 @@ defaultRules = Rules
 
 data Rules = Rules
   { rulesAccuracyFormula :: Formula,
+    rulesAccuracyPerHit :: Bool,
     rulesAccuracyStageFormula :: Formula,
     rulesAffinityChart :: Map Text (Map Text Double),
     rulesAiScoreFormula :: Formula,
@@ -58,6 +62,7 @@ data Rules = Rules
     rulesCriticalFormula :: Formula,
     rulesCriticalIgnoresStages :: Bool,
     rulesCriticalMultiplierFormula :: Formula,
+    rulesCriticalPerHit :: Bool,
     rulesDamageFormula :: Formula,
     rulesDefeatRecovery :: Double,
     rulesEscapeFormula :: Formula,
@@ -89,6 +94,7 @@ data Rules = Rules
 instance HasCodec Rules where
   codec = Codec.bimapCodec validate id $ Codec.object "Rules" $ Rules
     <$> Codec.optionalFieldWithOmittedDefault "accuracyFormula" (Formula "accuracy * accuracyStage / evasionStage") "Hit probability; the result is clamped to zero through one." Codec..= rulesAccuracyFormula
+    <*> Codec.optionalFieldWithOmittedDefault "accuracyPerHit" False "Roll accuracy for each hit rather than once per move." Codec..= rulesAccuracyPerHit
     <*> Codec.optionalFieldWithOmittedDefault "accuracyStageFormula" (Formula "if(stage >= 0, (3 + stage) / 3, 3 / (3 - stage))") "Accuracy and evasion stage multiplier." Codec..= rulesAccuracyStageFormula
     <*> Codec.optionalFieldWithOmittedDefaultWith "affinityChart" (Codec.mapCodec (Codec.mapCodec NumberCodec.finiteDoubleCodec)) (Map.empty) "Attack affinity to defending affinity multipliers." Codec..= rulesAffinityChart
     <*> Codec.optionalFieldWithOmittedDefault "aiScoreFormula" (Formula "damage * accuracy + heal * if(hpRatio < 0.4, 2, 0.2) + status * 2") "Score used by the strongest opponent policy." Codec..= rulesAiScoreFormula
@@ -97,6 +103,7 @@ instance HasCodec Rules where
     <*> Codec.optionalFieldWithOmittedDefault "criticalFormula" (Formula "criticalRate") "Critical probability." Codec..= rulesCriticalFormula
     <*> Codec.optionalFieldWithOmittedDefault "criticalIgnoresStages" (False) "Ignore attack and defense stages on critical hits." Codec..= rulesCriticalIgnoresStages
     <*> Codec.optionalFieldWithOmittedDefault "criticalMultiplierFormula" (Formula "2") "Critical damage multiplier." Codec..= rulesCriticalMultiplierFormula
+    <*> Codec.optionalFieldWithOmittedDefault "criticalPerHit" True "Roll critical chance independently for each hit." Codec..= rulesCriticalPerHit
     <*> Codec.optionalFieldWithOmittedDefault "damageFormula" (Formula "max(1, floor(power * attack / defense / 5 * critical * affinity * sameAffinity * variance))") "Damage expression; affinity immunity still prevents damage." Codec..= rulesDamageFormula
     <*> Codec.optionalFieldWithOmittedDefaultWith "defeatRecovery" NumberCodec.probabilityCodec (1) "Fraction of maximum health restored after defeat." Codec..= rulesDefeatRecovery
     <*> Codec.optionalFieldWithOmittedDefault "escapeFormula" (Formula "speed / max(1, enemySpeed) / 2 + attempts / 4") "Escape probability." Codec..= rulesEscapeFormula
@@ -124,6 +131,7 @@ instance HasCodec Rules where
     where
       validate value
         | rulesMaxKnownMoves value < 1 || rulesMaxLevel value < 1 || rulesMaxLevel value > 10000 = Left "Move and level limits must be positive; maxLevel must not exceed 10000."
+        | Move.moveMaxUses (rulesFallbackMove value) /= 0 = Left "The fallback move must have unlimited uses."
         | rulesStageLimit value < 0 || rulesStageLimit value > 100 || rulesMinimumDamage value < 0 = Left "Stage limit must be between zero and 100 and minimum damage must be nonnegative."
         | rulesRandomDamageMin value < 0 || rulesRandomDamageMax value < rulesRandomDamageMin value || rulesSameAffinityBonus value < 0 = Left "Damage multipliers must be nonnegative and ordered."
         | any (< 0) (concatMap Map.elems (Map.elems (rulesAffinityChart value))) || any (< 0) (Map.elems (rulesStatusCaptureBonuses value)) = Left "Affinity and capture multipliers must be nonnegative."

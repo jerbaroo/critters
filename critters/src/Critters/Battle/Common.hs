@@ -1,7 +1,7 @@
 -- | Pure battle operations shared by turn resolution, menus and encounters.
 module Critters.Battle.Common
-  ( active, activeIndex, allCritters, availableMoves, changedEvents, chance,
-    chooseInt, Context (..), contextFor, emit, evaluate, healParty, knownMoves,
+  ( active, activeIndex, allCritters, availableMoves, baseStat, changedEvents, chance,
+    chooseInt, chooseWeighted, Context (..), contextFor, emit, evaluate, healParty, knownMoves,
     modifyActive, modifyAt, moveRemaining, opposite, randomUnit, rulesFor,
     setCritter, setStage, Side (..), stageFactor, stat, statsFor, usable
   ) where
@@ -59,6 +59,16 @@ availableMoves side context = case active side context of
       definition <- Map.lookup identifier (Config.configMoves (battleConfig (contextBattle context)))
       if Move.moveMaxUses definition == 0 || moveRemaining critter identifier definition > 0 then Just (identifier, definition) else Nothing
 
+baseStat :: Context -> Side -> Text -> Double
+baseStat context side identifier = case active side context of
+  Nothing -> 1
+  Just critter -> max 1 (Map.findWithDefault 1 identifier (statsFor (contextBattle context) critter) * statusMultiplier critter)
+  where
+    statusMultiplier critter = fromMaybe 1 $ do
+      affliction <- Profile.profileStatus (Critter.battleProfile critter)
+      definition <- Map.lookup (Affliction.afflictionStatus affliction) (Config.configStatuses (battleConfig (contextBattle context)))
+      pure (Map.findWithDefault 1 identifier (Status.statusStatMultipliers definition))
+
 changedEvents :: GameState -> Context -> [Event]
 changedEvents starting context
   | battle starting == Just (contextBattle context) && party starting == contextParty context && inventory starting == contextInventory context && randomSeed starting == contextSeed context = []
@@ -78,6 +88,19 @@ chooseInt low high
   | otherwise = do
       value <- randomUnit
       pure (min high (low + integer (value * (number high - number low + 1))))
+
+chooseWeighted :: [(a, Int)] -> State Context (Maybe a)
+chooseWeighted entries = case filter ((> 0) . snd) entries of
+  [] -> pure Nothing
+  [(value, _)] -> pure (Just value)
+  values -> do
+    roll <- randomUnit
+    pure (pick (roll * sum (map (number . snd) values)) values)
+  where
+    pick _ [] = Nothing
+    pick value ((entry, weight) : rest)
+      | value < number weight || null rest = Just entry
+      | otherwise = pick (value - number weight) rest
 
 data Context = Context
   { contextBattle :: Battle,
@@ -165,14 +188,7 @@ stageFactor context side identifier = max 0 $ evaluate 1 formula [("stage", numb
     formula = (if identifier `elem` ["accuracy", "evasion"] then Rules.rulesAccuracyStageFormula else Rules.rulesStageMultiplierFormula) (rulesFor context)
 
 stat :: Context -> Side -> Text -> Double
-stat context side identifier = case active side context of
-  Nothing -> 1
-  Just critter -> max 1 (Map.findWithDefault 1 identifier (statsFor (contextBattle context) critter) * stageFactor context side identifier * statusMultiplier critter)
-  where
-    statusMultiplier critter = fromMaybe 1 $ do
-      affliction <- Profile.profileStatus (Critter.battleProfile critter)
-      definition <- Map.lookup (Affliction.afflictionStatus affliction) (Config.configStatuses (battleConfig (contextBattle context)))
-      pure (Map.findWithDefault 1 identifier (Status.statusStatMultipliers definition))
+stat context side identifier = max 1 (baseStat context side identifier * stageFactor context side identifier)
 
 statsFor :: Battle -> Critter -> Map Text Double
 statsFor current critter = Map.map (\base -> max 1 (evaluate (number base) (Rules.rulesStatFormula rules) [("base", number base), ("level", number (Critter.level critter))])) (Species.speciesStats definition)

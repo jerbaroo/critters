@@ -115,7 +115,7 @@ start state = either (const state) (\active -> state{battle = Just active}) (Bat
 
 tests :: TestTree
 tests = testGroup "Battle"
-  [ lifecycleTests, profileTests, snapshotTests, turnTests, viewTests,
+  [ lifecycleTests, profileTests, snapshotTests, turnTests, variationTests, viewTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)
@@ -175,6 +175,41 @@ turnTests = testGroup "Turns"
           (back, _) = Engine.step moves (Input.Character 'j')
           (actions, _) = Engine.step back Input.Enter
        in assertBool "Expected context-sensitive menu commands" (fmap battlePhase (battle moves) == Just MoveMenu && fmap battlePhase (battle actions) == Just ActionMenu && Engine.commandFor opened (Input.Character 'p') == Nothing)
+  ]
+
+variationTests :: TestTree
+variationTests = testGroup "Battle variation"
+  [ testCase "A miss consumes resources without dealing damage" $
+      let configured = fixture{combat = (combat fixture){configMoves = Map.adjust (\move -> move{moveAccuracy = 0}) (MoveId "strike") (configMoves (combat fixture))}}
+          opened = start configured
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
+       in assertBool "Expected both misses and spent uses" (map hitPoints (members (party result)) == [20] && fmap (map hitPoints . battleOpponentParty) (battle result) == Just [10] && map (profileRemainingUses . battleProfile) (members (party result)) == [Map.singleton (MoveId "strike") 4]),
+    testCase "Configure critical damage" $
+      let configured = fixture{combat = (combat fixture){configMoves = Map.adjust (\move -> move{moveCriticalRate = 1}) (MoveId "strike") (configMoves (combat fixture)), configRules = defaultRules{rulesDamageFormula = Formula "power * critical"}}}
+          opened = start configured
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
+       in assertBool "Expected a configured critical victory" (fmap battleOutcome (battle result) == Just (Just Victory) && map hitPoints (members (party result)) == [20]),
+    testCase "Respect authored affinity immunity and weighted multi-hit counts" $ do
+      let immuneSpecies = defaultSpecies{speciesAffinities = ["stone"], speciesLearnset = Map.singleton 1 [MoveId "strike"]}
+          configured = fixture{combat = (combat fixture){configMoves = Map.adjust (\move -> move{moveAffinity = "leaf"}) (MoveId "strike") (configMoves (combat fixture)), configSpecies = Map.insert "stonekin" immuneSpecies (configSpecies (combat fixture)), configRules = (configRules (combat fixture)){rulesAffinityChart = Map.singleton "leaf" (Map.singleton "stone" 0)}}}
+          opened = start configured
+          immune = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
+          multiple = start fixture{combat = (combat fixture){configMoves = Map.adjust (\move -> move{moveMinHits = 2, moveMaxHits = 2, moveHitWeights = Map.singleton 2 1}) (MoveId "strike") (configMoves (combat fixture))}}
+          result = foldl' Engine.applyEvent multiple (Turn.resolveAction multiple (UseMove (MoveId "strike")))
+      assertBool "Expected an immunity to prevent all damage" (fmap (map hitPoints . battleOpponentParty) (battle immune) == Just [10])
+      assertBool "Expected two hits with only one use consumed" (fmap battleOutcome (battle result) == Just (Just Victory) && map (profileRemainingUses . battleProfile) (members (party result)) == [Map.singleton (MoveId "strike") 4]),
+    testCase "Exhausted moves fall back to the configured unlimited move" $
+      let exhausted = (basicCritter 20 2 20 "leafling"){battleProfile = defaultProfile{profileRemainingUses = Map.singleton (MoveId "strike") 0}}
+          opened = start fixture{party = Party [exhausted]}
+          result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "")))
+       in assertBool "Expected a usable fallback and no exhausted move action" (null (Turn.resolveAction opened (UseMove (MoveId "strike"))) && fmap battleOutcome (battle result) == Just (Just Victory)),
+    testCase "Record random results and reproduce them by replay without rerolling" $
+      let configured = fixture{combat = (combat fixture){configRules = defaultRules{rulesTieBreak = "random", rulesRandomDamageMin = 0.8, rulesRandomDamageMax = 1.2}}}
+          opened = start configured
+          facts = Turn.resolveAction opened (UseMove (MoveId "strike"))
+          result = foldl' Engine.applyEvent opened facts
+          replayed = foldl' Engine.applyEvent opened{randomSeed = 999} facts
+       in assertBool "Expected reproducible sampling and recorded random state" (facts == Turn.resolveAction opened (UseMove (MoveId "strike")) && randomSeed result /= randomSeed opened && party replayed == party result && battle replayed == battle result && randomSeed replayed == randomSeed result)
   ]
 
 viewTests :: TestTree
