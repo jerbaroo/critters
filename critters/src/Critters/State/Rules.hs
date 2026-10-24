@@ -28,6 +28,7 @@ defaultRules = Rules
     rulesCriticalPerHit = True,
     rulesDamageFormula = Formula "max(1, floor(power * attack / defense / 5 * critical * affinity * sameAffinity * variance))",
     rulesDefeatRecovery = 1,
+    rulesEncountersAfterWarp = False,
     rulesEscapeFormula = Formula "speed / max(1, enemySpeed) / 2 + attempts / 4",
     rulesEscapePriority = 8,
     rulesExperienceForFainted = False,
@@ -69,6 +70,7 @@ data Rules = Rules
     rulesCriticalPerHit :: Bool,
     rulesDamageFormula :: Formula,
     rulesDefeatRecovery :: Double,
+    rulesEncountersAfterWarp :: Bool,
     rulesEscapeFormula :: Formula,
     rulesEscapePriority :: Int,
     rulesExperienceForFainted :: Bool,
@@ -113,6 +115,7 @@ instance HasCodec Rules where
     <*> Codec.optionalFieldWithOmittedDefault "criticalPerHit" True "Roll critical chance independently for each hit." Codec..= rulesCriticalPerHit
     <*> Codec.optionalFieldWithOmittedDefault "damageFormula" (Formula "max(1, floor(power * attack / defense / 5 * critical * affinity * sameAffinity * variance))") "Damage expression; affinity immunity still prevents damage." Codec..= rulesDamageFormula
     <*> Codec.optionalFieldWithOmittedDefaultWith "defeatRecovery" NumberCodec.probabilityCodec (1) "Fraction of maximum health restored after defeat." Codec..= rulesDefeatRecovery
+    <*> Codec.optionalFieldWithOmittedDefault "encountersAfterWarp" False "Allow encounter checks at warp destinations." Codec..= rulesEncountersAfterWarp
     <*> Codec.optionalFieldWithOmittedDefault "escapeFormula" (Formula "speed / max(1, enemySpeed) / 2 + attempts / 4") "Escape probability." Codec..= rulesEscapeFormula
     <*> Codec.optionalFieldWithOmittedDefault "escapePriority" (8) "Action priority for escape attempts." Codec..= rulesEscapePriority
     <*> Codec.optionalFieldWithOmittedDefault "experienceForFainted" False "Allow fainted recipients to gain experience." Codec..= rulesExperienceForFainted

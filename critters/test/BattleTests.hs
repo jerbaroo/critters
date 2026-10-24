@@ -22,9 +22,12 @@ import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.CombatConfig (CombatConfig (..), defaultCombat)
 import Critters.State.Critter (Critter (..), basicCritter)
 import Critters.State.Effect (Effect (..))
+import Critters.State.Encounter (Encounter (..))
+import Critters.State.EncounterEntry (EncounterEntry (..))
 import Critters.State.FlagId (FlagId (..))
 import Critters.State.GameState (GameState (..), initialState)
 import Critters.State.Item (Item (..), defaultItem)
+import Critters.State.MapId (MapId (..))
 import Critters.State.Move (Move (..), defaultMove)
 import Critters.State.MoveEffect (MoveEffect (..), Target (..))
 import Critters.State.MoveId (MoveId (..))
@@ -32,12 +35,30 @@ import Critters.State.Party (Party (..))
 import Critters.State.Rules (Rules (..), defaultRules)
 import Critters.State.Species (Species (..), defaultSpecies)
 import Critters.State.StatusDefinition (StatusDefinition (..), defaultStatus)
+import Critters.State.Tile (Tile (Ground))
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
+
+encounterTests :: TestTree
+encounterTests = testGroup "Encounters"
+  [ testCase "Trigger weighted, level-configured encounters after eligible steps" $
+      let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 1 [EncounterEntry "practice" (Just 3) (Just 3) 1] (MapId "overworld") 2 [Ground]]}}
+          (first, events1) = Engine.step configured Input.Right
+          (second, events2) = Engine.step first Input.Right
+       in assertBool "Expected a minimum step count, generated health, and replayable entry" (battle first == Nothing && encounterSteps first == 1 && fmap (map level . battleOpponentParty) (battle second) == Just [3] && fmap (map maxHitPoints . battleOpponentParty) (battle second) == Just [26] && encounterSteps second == 0 && foldl' Engine.applyEvent configured (events1 <> events2) == second),
+    testCase "Blocked movement and unusable parties do not roll encounters" $
+      let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 1 [EncounterEntry "practice" Nothing Nothing 1] (MapId "overworld") 0 [Ground]]}}
+          (blocked, _) = Engine.step configured Input.Left
+          (empty, _) = Engine.step configured{party = Party []} Input.Right
+       in assertBool "Expected no encounter state or random changes" (battle blocked == Nothing && encounterSteps blocked == 0 && randomSeed blocked == randomSeed configured && battle empty == Nothing && encounterSteps empty == 0),
+    testCase "Encounter tables and selected outcomes survive serialization" $
+      let configured = fixture{combat = (combat fixture){configEncounters = [Encounter 0.8 [EncounterEntry "practice" (Just 4) (Just 2) 3] (MapId "overworld") 0 [Ground]]}}
+       in assertBool "Expected complete encounter data to round trip" (Aeson.eitherDecode (Aeson.encode configured) == Right configured)
+  ]
 
 fixture :: GameState
 fixture = initialState
@@ -212,7 +233,7 @@ start state = either (const state) (\active -> state{battle = Just active}) (Bat
 
 tests :: TestTree
 tests = testGroup "Battle"
-  [ itemTests, lifecycleTests, profileTests, progressionTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
+  [ encounterTests, itemTests, lifecycleTests, profileTests, progressionTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)

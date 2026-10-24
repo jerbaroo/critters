@@ -65,6 +65,7 @@ instance HasCodec CombatConfig where
         | any (not . validEffect) (Move.moveEffects (Rules.rulesFallbackMove (configRules value)) <> concatMap Move.moveEffects (Map.elems (configMoves value))) = Left "A move effect references an unknown status or invalid stat."
         | any (not . validCritter) (concatMap Definition.definitionOpponents (Map.elems (configBattles value))) = Left "An opposing critter references an unknown species, move or status."
         | any (not . (`Map.member` configBattles value) . Entry.entryBattle) (concatMap Encounter.encounterEntries (configEncounters value)) = Left "An encounter references a missing battle."
+        | any (\entry -> maybe False (> Rules.rulesMaxLevel (configRules value)) (Entry.entryMinLevel entry) || maybe False (> Rules.rulesMaxLevel (configRules value)) (Entry.entryMaxLevel entry)) (concatMap Encounter.encounterEntries (configEncounters value)) = Left "Encounter levels exceed the game level limit."
         | any (not . (`Map.member` configStatuses value)) (Map.keys (Rules.rulesStatusCaptureBonuses (configRules value))) = Left "A capture bonus references a missing status."
         | otherwise = Right value
         where

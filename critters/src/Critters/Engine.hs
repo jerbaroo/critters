@@ -4,6 +4,7 @@ module Critters.Engine (applyEvent, chooseInteraction, commandFor, conditionHold
 import Control.Monad (foldM)
 import Critters.Battle.Common qualified as BattleCommon
 import Critters.Battle.Engine qualified as BattleEngine
+import Critters.Battle.Encounter qualified as Encounter
 import Critters.State.CombatConfig qualified as Config
 import Critters.Command (Command (..))
 import Critters.Event (Event)
@@ -28,6 +29,7 @@ import Critters.State.Location qualified as Location
 import Critters.State.Npc qualified as Npc
 import Critters.State.Object qualified as Object
 import Critters.State.Party (Party (..))
+import Critters.State.Rules qualified as Rules
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
 import Critters.State.Warp qualified as Warp
@@ -165,8 +167,11 @@ eventsFor state command
                   Just (Ledge allowed) | allowed == direction -> move direction adjacent
                   _ -> adjacent
                 turns = [Event.PlayerTurned direction | direction /= playerDirection state]
-             in turns
-                  <> if not (occupied state adjacent) then movementEvents state direction destination else []
+                facts = turns <> if not (occupied state adjacent) then movementEvents state direction destination else []
+                moved = foldl' applyEvent state facts
+                entered = any (\case Event.PlayerMoved _ -> True; _ -> False) facts
+                warped = any (\case Event.PlayerWarped _ -> True; _ -> False) facts
+             in facts <> if entered && (not warped || Rules.rulesEncountersAfterWarp (Config.configRules (combat state))) then Encounter.eventsForStep moved else []
       _ -> []
 
 -- | Validate the entire batch against a temporary state before returning facts.
