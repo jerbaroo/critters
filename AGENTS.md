@@ -18,3 +18,5 @@
 - Use Cabal to build and type-check, and `tasty` with `tasty-hunit` for tests.
 - Leave Cabal dependency versions unconstrained; use the Nix package set's
   versions.
+- Leave pre-commit checks to the user; do not run or troubleshoot them unless
+  explicitly requested.

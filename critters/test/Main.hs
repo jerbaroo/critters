@@ -9,7 +9,7 @@ import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI qualified as TUI
 import Critters.Save qualified as Save
-import Critters.State (Conversation (..), GameState (..), Npc (..), NpcId (..), Position (..), Tile (..), World (..), conversationText, initialState, tileAt)
+import Critters.State (Conversation (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
@@ -58,7 +58,7 @@ conversationTests =
               npcState
                 { playerDirection = South,
                   playerPosition = Position 2 3,
-                  world = filledWorld [replicate 4 Ground, [Ground, Ground, Ledge South, Ground], replicate 4 Ground, replicate 4 Ground]
+                  maps = Map.singleton (MapId "overworld") (filledWorld [replicate 4 Ground, [Ground, Ground, Ledge South, Ground], replicate 4 Ground, replicate 4 Ground])
                 }
          in assertBool "Expected no jump onto an NPC" $
               Engine.step current Input.Down == (current, []),
@@ -92,7 +92,7 @@ conversationTests =
            in assertBool "Expected interaction to require the adjacent cell in front" $
                 Engine.step current Input.Enter == (current, []),
       testCase "Ignore NPCs with no dialogue" $
-        let current = npcState{npcs = Map.singleton (NpcId "guide") (Npc [] (Position 2 1))}
+        let current = npcState{npcs = Map.singleton (NpcId "guide") (Npc [] (Location (MapId "overworld") (Position 2 1)))}
          in assertBool "Expected an empty dialogue to produce no conversation" $
               Engine.step current Input.Enter == (current, []),
       testCase "Read missing or invalid conversation lines safely" $
@@ -162,18 +162,19 @@ engineTests =
         let ragged = gameState (Position 1 0) (filledWorld [[], [Ground, Ground]])
         assertBool "Expected a missing cell in a ragged row to block movement" $
           Engine.step ragged Input.Up == (ragged, [])
-        let hole = gameState (Position 1 0) (World [[Just Ground, Nothing, Just Ground], replicate 3 (Just Ground)])
+        let hole = gameState (Position 1 0) (World [[Just Ground, Nothing, Just Ground], replicate 3 (Just Ground)] [])
         assertBool "Expected a missing cell within a row to block movement" $
           Engine.step hole Input.Up == (hole, []),
       testCase "Reject ledges with blocked or missing landings" $ do
         forM_ (Nothing : map Just [Fence, Arena, House, Laboratory, Ledge South, Shop, Clinic, Rock, Sign, Tree, Wall, Water]) $ \landing ->
-          let current =
-                GameState Nothing Map.empty South (Position 1 2) $
-                  World
-                    [ replicate 3 (Just Ground),
-                      [Just Ground, Just (Ledge South), Just Ground],
-                      [Just Ground, landing, Just Ground]
-                    ]
+          let layout =
+                World
+                  [ replicate 3 (Just Ground),
+                    [Just Ground, Just (Ledge South), Just Ground],
+                    [Just Ground, landing, Just Ground]
+                  ]
+                  []
+              current = (gameState (Position 1 2) layout){playerDirection = South}
            in assertBool "Expected no jump into a blocked tile or missing cell" $
                 Engine.step current Input.Down == (current, [])
         let edge = (gameState (Position 0 1) (filledWorld [[Ground], [Ledge South]])){playerDirection = South}
@@ -196,7 +197,7 @@ engineTests =
         forM_ [Input.Character 'x', Input.Character 'q', Input.Enter, Input.Escape] $
           \input -> assertBool "Expected no state changes or events" (Engine.step state input == (state, [])),
       testCase "Walk across terrain and doorways" $
-        forM_ [Door, Flowers, Grass, Ground, Path, Sand, TallGrass] $ \tile ->
+        forM_ [Door, Flowers, Grass, Ground, Path, Sand, Stairs, TallGrass] $ \tile ->
           let current = withDestination tile
               destination = Position 1 2
            in assertBool "Expected a movement fact and the new player position" $
@@ -209,14 +210,15 @@ engineTests =
     state = gameState (Position 2 2) (filledWorld (replicate 5 (replicate 5 Ground)))
     withDestination tile = gameState (Position 1 1) (filledWorld [[Ground, tile, Ground], replicate 3 Ground, replicate 3 Ground])
     withLedge direction =
-      GameState Nothing Map.empty direction (Position 2 3) $
-        filledWorld
-          [ replicate 5 Ground,
-            replicate 5 Ground,
-            [Ground, Ground, Ledge direction, Ground, Ground],
-            replicate 5 Ground,
-            replicate 5 Ground
-          ]
+      let layout =
+            filledWorld
+              [ replicate 5 Ground,
+                replicate 5 Ground,
+                [Ground, Ground, Ledge direction, Ground, Ground],
+                replicate 5 Ground,
+                replicate 5 Ground
+              ]
+       in (gameState (Position 2 3) layout){playerDirection = direction}
 
 eventTests :: TestTree
 eventTests =
@@ -227,7 +229,8 @@ eventTests =
           [ ("{\"lineIndex\":1,\"type\":\"conversation-advanced\"}", Event.ConversationAdvanced 1),
             ("{\"type\":\"conversation-ended\"}", Event.ConversationEnded),
             ("{\"npcId\":\"guide\",\"type\":\"conversation-started\"}", Event.ConversationStarted (NpcId "guide")),
-            ("{\"direction\":\"west\",\"type\":\"player-turned\"}", Event.PlayerTurned West)
+            ("{\"direction\":\"west\",\"type\":\"player-turned\"}", Event.PlayerTurned West),
+            ("{\"location\":{\"mapId\":\"room\",\"position\":{\"x\":0,\"y\":1}},\"type\":\"player-warped\"}", Event.PlayerWarped (Location (MapId "room") (Position 0 1)))
           ]
         $ \(encoded, expected) ->
           assertBool "Expected independently specified facts and their JSON fields" $
@@ -252,7 +255,7 @@ eventTests =
         $ isLeft (Aeson.eitherDecode @Event.Event "{\"position\":{\"x\":2,\"y\":1},\"type\":\"walk\"}"),
       testCase "Round trips" $ do
         forM_ [Position (-1) 2, Position minBound maxBound] (assertRoundTrip . Event.PlayerMoved)
-        forM_ [Event.ConversationAdvanced 1, Event.ConversationEnded, Event.ConversationStarted (NpcId "guide"), Event.PlayerTurned East, Event.PlayerTurned North, Event.PlayerTurned South, Event.PlayerTurned West] assertRoundTrip,
+        forM_ [Event.ConversationAdvanced 1, Event.ConversationEnded, Event.ConversationStarted (NpcId "guide"), Event.PlayerTurned East, Event.PlayerTurned North, Event.PlayerTurned South, Event.PlayerTurned West, Event.PlayerWarped (Location (MapId "room") (Position 0 1))] assertRoundTrip,
       testCase "Save the expected JSON structure"
         $ assertBool "Expected an event type and an absolute position"
         $ Aeson.eitherDecode fixture == Right (Aeson.toJSON event)
@@ -262,10 +265,10 @@ eventTests =
     fixture = "{\"position\":{\"x\":2,\"y\":1},\"type\":\"player-moved\"}"
 
 filledWorld :: [[Tile]] -> World
-filledWorld = World . map (map Just)
+filledWorld rows = World (map (map Just) rows) []
 
 gameState :: Position -> World -> GameState
-gameState location layout = initialState{playerPosition = location, world = layout}
+gameState location layout = initialState{maps = Map.singleton (MapId "overworld") layout, playerPosition = location}
 
 inputTests :: TestTree
 inputTests =
@@ -288,7 +291,7 @@ main = defaultMain tests
 npcState :: GameState
 npcState =
   (gameState (Position 1 1) (filledWorld (replicate 4 (replicate 4 Ground))))
-    { npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] (Position 2 1)),
+    { npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] (Location (MapId "overworld") (Position 2 1))),
       playerDirection = East
     }
 
@@ -337,12 +340,12 @@ saveTests =
         withSaveFile $ \path -> do
           let (opened, started) = Engine.step npcState Input.Enter
               (active, advanced) = Engine.step opened Input.Enter
-              history = started <> advanced
-          written <- Save.save path history
+              conversationHistory = started <> advanced
+          written <- Save.save path conversationHistory
           loaded <- Save.load path
           assertBool "Expected all conversation facts to survive JSON Lines and replay" $
             written == Right ()
-              && loaded == Right history
+              && loaded == Right conversationHistory
               && fmap (Save.apply npcState) loaded == Right active
               && conversationText active == Just "Visit my lab."
               && Engine.step active Input.Enter == (npcState, [Event.ConversationEnded]),
@@ -418,15 +421,20 @@ stateTests =
           testCase "Load an independently written fixture"
             $ assertBool "Expected the fixture's state"
             $ Aeson.eitherDecode fixture == Right state,
+          testCase "Load legacy single-map files" $
+            let encoded = "{\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\"],\"position\":{\"x\":1,\"y\":0}}},\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"grass\"]]}}"
+                expected = (gameState (Position 0 0) (filledWorld [[Ground, Grass]])){npcs = Map.singleton (NpcId "guide") (Npc ["Hello!"] (Location (MapId "overworld") (Position 1 0)))}
+             in assertBool "Expected the old world and NPC positions to belong to the overworld" $
+                  Aeson.eitherDecode encoded == Right expected,
           testCase "Load missing cells"
             $ assertBool "Expected JSON null to represent an absent cell"
-            $ Aeson.eitherDecode @World "{\"tiles\":[[null,\"ground\",null]]}" == Right (World [[Nothing, Just Ground, Nothing]]),
+            $ Aeson.eitherDecode @World "{\"tiles\":[[null,\"ground\",null]]}" == Right (World [[Nothing, Just Ground, Nothing]] []),
           testCase "Load NPCs and an active conversation" $
-            let encoded = "{\"conversation\":{\"lineIndex\":1,\"npcId\":\"guide\"},\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\",\"Visit my lab.\"],\"position\":{\"x\":1,\"y\":0}}},\"playerDirection\":\"east\",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"grass\"]]}}"
+            let encoded = "{\"conversation\":{\"lineIndex\":1,\"npcId\":\"guide\"},\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\",\"Visit my lab.\"],\"location\":{\"mapId\":\"overworld\",\"position\":{\"x\":1,\"y\":0}}}},\"playerDirection\":\"east\",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"maps\":{\"overworld\":{\"tiles\":[[\"ground\",\"grass\"]]}}}"
                 expected =
                   (gameState (Position 0 0) (filledWorld [[Ground, Grass]]))
                     { conversation = Just (Conversation 1 (NpcId "guide")),
-                      npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] (Position 1 0)),
+                      npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] (Location (MapId "overworld") (Position 1 0))),
                       playerDirection = East
                     }
              in assertBool "Expected stable NPC object keys, facing, dialogue and progress" $
@@ -440,15 +448,18 @@ stateTests =
         "Round trips"
         [ testCase "Conversation" $ forM_ [Conversation 0 (NpcId "guide"), Conversation 1 (NpcId "guide")] assertRoundTrip,
           testCase "Direction" $ forM_ [East, North, South, West] assertRoundTrip,
-          testCase "GameState" $ forM_ [initialState, npcState, npcState{conversation = Just (Conversation 1 (NpcId "guide"))}] assertRoundTrip,
-          testCase "Npc" $ forM_ [Npc [] (Position 0 0), Npc ["Hello!", "Visit my lab."] (Position 2 1)] assertRoundTrip,
+          testCase "GameState" $ forM_ [initialState, npcState, npcState{conversation = Just (Conversation 1 (NpcId "guide"))}, warpState, fst (Engine.step warpState Input.Up)] assertRoundTrip,
+          testCase "Location" $ forM_ [Location (MapId "overworld") (Position 1 2), Location (MapId "room") (Position 0 1)] assertRoundTrip,
+          testCase "MapId" $ forM_ [MapId "overworld", MapId "room"] assertRoundTrip,
+          testCase "Npc" $ forM_ [Npc [] (Location (MapId "overworld") (Position 0 0)), Npc ["Hello!", "Visit my lab."] (Location (MapId "overworld") (Position 2 1))] assertRoundTrip,
           testCase "NpcId" $ forM_ [NpcId "guide", NpcId "博士"] assertRoundTrip,
           testCase "Position" $
             forM_ [Position 0 0, Position (-1) 2, Position minBound maxBound] assertRoundTrip,
           testCase "Tile" $
-            forM_ [Door, Fence, Flowers, Grass, Ground, Arena, House, Laboratory, Ledge East, Ledge North, Ledge South, Ledge West, Shop, Path, Clinic, Rock, Sand, Sign, TallGrass, Tree, Wall, Water] assertRoundTrip,
+            forM_ [Door, Fence, Flowers, Grass, Ground, Arena, House, Laboratory, Ledge East, Ledge North, Ledge South, Ledge West, Shop, Path, Clinic, Rock, Sand, Sign, Stairs, TallGrass, Tree, Wall, Water] assertRoundTrip,
+          testCase "Warp" $ assertRoundTrip (Warp (Location (MapId "room") (Position 0 1)) (Position 1 2)),
           testCase "World" $
-            forM_ [filledWorld [], filledWorld [[]], filledWorld [[Ground], [], [Water, Wall]], World [[Nothing, Just Ground, Nothing]]] assertRoundTrip
+            forM_ [filledWorld [], filledWorld [[]], filledWorld [[Ground], [], [Water, Wall]], World [[Nothing, Just Ground, Nothing]] [], world warpState] assertRoundTrip
         ],
       testGroup
         "World coordinates"
@@ -462,8 +473,8 @@ stateTests =
               && tileAt (filledWorld [[]]) (Position 0 0) == Nothing
               && tileAt (filledWorld [[Ground], []]) (Position 0 0) == Nothing
               && tileAt (filledWorld [[Ground], []]) (Position 0 1) == Just Ground
-              && tileAt (World [[Nothing, Just Ground]]) (Position 0 0) == Nothing
-              && tileAt (World [[Nothing, Just Ground]]) (Position 1 0) == Just Ground,
+              && tileAt (World [[Nothing, Just Ground]] []) (Position 0 0) == Nothing
+              && tileAt (World [[Nothing, Just Ground]] []) (Position 1 0) == Just Ground,
           testCase "Outside the world"
             $ forM_
               [ Position (-1) 0,
@@ -478,12 +489,12 @@ stateTests =
     ]
   where
     fixture =
-      "{\"playerPosition\":{\"x\":2,\"y\":1},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"wall\"],[\"water\",\"tall-grass\"]]}}"
+      "{\"playerPosition\":{\"x\":2,\"y\":1},\"version\":1,\"maps\":{\"overworld\":{\"tiles\":[[\"ground\",\"wall\"],[\"water\",\"tall-grass\"]]}}}"
     sampleWorld = filledWorld [[TallGrass, Wall], [Ground, Water]]
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [conversationTests, engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests]
+tests = testGroup "Critters" [conversationTests, engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =
@@ -536,7 +547,7 @@ tuiTests =
                 take TUI.height drawing == view npcState
                   && drop TUI.height drawing == ["", expected],
       testCase "Render missing cells as padding" $
-        let rows = view (gameState (Position (-1) (-1)) (World [[Nothing, Just Ground, Nothing]]))
+        let rows = view (gameState (Position (-1) (-1)) (World [[Nothing, Just Ground, Nothing]] []))
          in assertBool "Expected missing cells on either side of real terrain to remain blank" $
               Text.take 3 (last rows) == "\x3000⬜\x3000",
       testCase "Render tiles north-up with the player over the terrain" $
@@ -551,6 +562,78 @@ tuiTests =
     largeWorld = filledWorld (replicate (TUI.height * 2) (replicate (TUI.width * 2) Ground))
     tile rows (column, row) = Text.take 1 $ Text.drop column (rows !! (TUI.height - row - 1))
     view = Text.lines . TUI.render
+
+warpState :: GameState
+warpState =
+  (gameState (Position 1 1) (filledWorld []))
+    { maps =
+        Map.fromList
+          [ (MapId "overworld", (filledWorld [[Ground, Path, Ground], replicate 3 Ground, replicate 3 Ground]){warps = [Warp (Location (MapId "room") (Position 0 1)) (Position 1 2)]}),
+            (MapId "room", (filledWorld [[Ground, Ground], [Ground, Water]]){warps = [Warp (Location (MapId "overworld") (Position 1 1)) (Position 0 0)]})
+          ]
+    }
+
+warpTests :: TestTree
+warpTests =
+  testGroup
+    "Warp"
+    [ testCase "Apply warp facts without rechecking their destinations" $
+        let target = Location (MapId "missing") (Position (-3) 12)
+            active = warpState{conversation = Just (Conversation 0 (NpcId "missing"))}
+         in assertBool "Expected applying a fact to update both map and position, closing dialogue" $
+              Engine.applyEvent active (Event.PlayerWarped target)
+                == warpState{playerMap = MapId "missing", playerPosition = Position (-3) 12},
+      testCase "Block invalid warp destinations" $ do
+        forM_ [Nothing, Just Wall, Just Water, Just Tree] $ \landing ->
+          let current = warpState{maps = Map.adjust (\layout -> layout{tiles = [[landing], [Just Ground]]}) (MapId "room") (maps warpState)}
+           in assertBool "Expected no movement into an unusable destination" $
+                Engine.step current Input.Up == (current, [])
+        let absent = warpState{maps = Map.delete (MapId "room") (maps warpState)}
+            outside = warpState{maps = Map.adjust (\layout -> layout{tiles = []}) (MapId "room") (maps warpState)}
+            occupied = warpState{npcs = Map.singleton (NpcId "inside") (Npc [] (Location (MapId "room") (Position 0 1)))}
+        forM_ [absent, outside, occupied] $ \current ->
+          assertBool "Expected missing maps, missing cells and NPCs to block arrival" $
+            Engine.step current Input.Up == (current, []),
+      testCase "Do not chain reciprocal warps on arrival" $
+        let current = warpState{maps = Map.adjust (\layout -> layout{warps = [Warp (Location (MapId "overworld") (Position 1 1)) (Position 0 1)]}) (MapId "room") (maps warpState)}
+            (arrived, events) = Engine.step current Input.Up
+         in assertBool "Expected one transition per input even when the arrival cell has a return warp" $
+              playerMap arrived == MapId "room"
+                && events == [Event.PlayerMoved (Position 1 2), Event.PlayerWarped (Location (MapId "room") (Position 0 1))],
+      testCase "Ignore NPCs in other maps" $
+        let current = warpState{npcs = Map.singleton (NpcId "outside") (Npc ["Hello!"] (Location (MapId "overworld") (Position 0 1)))}
+            (arrived, _) = Engine.step current Input.Up
+         in assertBool "Expected unrelated NPCs neither to block arrival nor appear in the destination map" $
+              playerMap arrived == MapId "room"
+                && Text.count "🧓" (TUI.render current) == 1
+                && Text.count "🧓" (TUI.render arrived) == 0
+                && snd (Engine.step arrived Input.Enter) == [],
+      testCase "Render the destination map" $
+        let (arrived, _) = Engine.step warpState Input.Up
+            rows = Text.lines (TUI.render arrived)
+         in assertBool "Expected only the active map's terrain, player and padding" $
+              Text.take 3 (rows !! (TUI.height - 2)) == "🧑⬜\x3000"
+                && Text.take 3 (last rows) == "⬜🌊\x3000",
+      testCase "Replay map transitions through the save file" $
+        withSaveFile $ \path -> do
+          let (arrived, events) = Engine.step warpState Input.Up
+          written <- Save.save path events
+          loaded <- Save.load path
+          assertBool "Expected the active map and position to survive JSON Lines and replay" $
+            written == Right () && fmap (Save.apply warpState) loaded == Right arrived,
+      testCase "Return through an interior exit" $
+        let (inside, _) = Engine.step warpState Input.Up
+            (outside, events) = Engine.step inside Input.Down
+         in assertBool "Expected a return warp to restore the exterior location" $
+              outside == warpState{playerDirection = South}
+                && events == [Event.PlayerTurned South, Event.PlayerMoved (Position 0 0), Event.PlayerWarped (Location (MapId "overworld") (Position 1 1))],
+      testCase "Warp from ordinary floor tiles" $
+        let (arrived, events) = Engine.step warpState Input.Up
+         in assertBool "Expected a Path tile to trigger a transition independently of doors" $
+              tileAt (world warpState) (Position 1 2) == Just Path
+                && arrived == warpState{playerMap = MapId "room", playerPosition = Position 0 1}
+                && events == [Event.PlayerMoved (Position 1 2), Event.PlayerWarped (Location (MapId "room") (Position 0 1))]
+    ]
 
 withSaveFile :: (FilePath -> IO a) -> IO a
 withSaveFile action = do

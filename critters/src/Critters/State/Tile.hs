@@ -23,6 +23,7 @@ data Tile
   | Sand
   | Shop
   | Sign
+  | Stairs
   | TallGrass
   | Tree
   | Wall
@@ -51,6 +52,7 @@ instance HasCodec Tile where
              (Sand, "sand"),
              (Shop, "shop"),
              (Sign, "sign"),
+             (Stairs, "stairs"),
              (TallGrass, "tall-grass"),
              (Tree, "tree"),
              (Wall, "wall"),

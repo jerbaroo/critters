@@ -4,6 +4,7 @@ import Autodocodec (Autodocodec (..), HasCodec, JSONObjectCodec)
 import Autodocodec qualified as Codec
 import Critters.Input.Direction (Direction)
 import Critters.Pretty (Pretty (..))
+import Critters.State.Location (Location)
 import Critters.State.NpcId (NpcId)
 import Critters.State.Position (Position)
 import Data.Aeson qualified as Aeson
@@ -19,6 +20,7 @@ data Event
   | ConversationStarted NpcId
   | PlayerMoved Position
   | PlayerTurned Direction
+  | PlayerWarped Location
   deriving stock (Eq)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Event)
 
@@ -31,7 +33,8 @@ instance HasCodec Event where
           ("conversation-ended", ("ConversationEnded", pure ConversationEnded)),
           ("conversation-started", ("ConversationStarted", Codec.mapToDecoder ConversationStarted started)),
           ("player-moved", ("PlayerMoved", Codec.mapToDecoder PlayerMoved moved)),
-          ("player-turned", ("PlayerTurned", Codec.mapToDecoder PlayerTurned turned))
+          ("player-turned", ("PlayerTurned", Codec.mapToDecoder PlayerTurned turned)),
+          ("player-warped", ("PlayerWarped", Codec.mapToDecoder PlayerWarped warped))
         ]
     where
       advanced :: JSONObjectCodec Int
@@ -42,12 +45,15 @@ instance HasCodec Event where
         ConversationStarted identifier -> ("conversation-started", Codec.mapToEncoder identifier started)
         PlayerMoved destination -> ("player-moved", Codec.mapToEncoder destination moved)
         PlayerTurned direction -> ("player-turned", Codec.mapToEncoder direction turned)
+        PlayerWarped destination -> ("player-warped", Codec.mapToEncoder destination warped)
       moved :: JSONObjectCodec Position
       moved = Codec.requiredField "position" "The player's position after moving."
       started :: JSONObjectCodec NpcId
       started = Codec.requiredField "npcId" "The NPC whose conversation started."
       turned :: JSONObjectCodec Direction
       turned = Codec.requiredField "direction" "The direction the player now faces."
+      warped :: JSONObjectCodec Location
+      warped = Codec.requiredField "location" "The map and coordinates the player arrived at."
 
 instance Pretty Event where
   pretty = \case
@@ -56,3 +62,4 @@ instance Pretty Event where
     ConversationStarted identifier -> "ConversationStarted " <> pretty identifier
     PlayerMoved destination -> "PlayerMoved " <> pretty destination
     PlayerTurned direction -> "PlayerTurned " <> pretty direction
+    PlayerWarped destination -> "PlayerWarped " <> pretty destination

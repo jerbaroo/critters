@@ -8,12 +8,15 @@ import Critters.Input (Input)
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
 import Critters.State.Conversation (Conversation (..))
-import Critters.State.GameState (GameState (..))
+import Critters.State.GameState (GameState (..), world)
 import Critters.State.GameState qualified as GameState
+import Critters.State.Location qualified as Location
 import Critters.State.Npc qualified as Npc
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
-import Critters.State.World (tileAt)
+import Critters.State.Warp qualified as Warp
+import Critters.State.World (World (..), tileAt)
+import Data.List (find)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 
@@ -25,6 +28,8 @@ applyEvent state = \case
   Event.ConversationStarted identifier -> state{conversation = Just (Conversation 0 identifier)}
   Event.PlayerMoved destination -> state{playerPosition = destination}
   Event.PlayerTurned direction -> state{playerDirection = direction}
+  Event.PlayerWarped destination ->
+    state{conversation = Nothing, playerMap = Location.mapId destination, playerPosition = Location.position destination}
 
 canStand :: GameState -> Position -> Bool
 canStand state destination =
@@ -53,7 +58,9 @@ eventsFor state = \case
   AdvanceConversation -> case conversation state of
     Just active -> case Map.lookup (npcId active) (npcs state) of
       Just npc
-        | lineIndex active >= 0 && lineIndex active < length (Npc.dialogue npc) - 1 ->
+        | Location.mapId (Npc.location npc) == playerMap state
+            && lineIndex active >= 0
+            && lineIndex active < length (Npc.dialogue npc) - 1 ->
             [Event.ConversationAdvanced (lineIndex active + 1)]
       _ -> [Event.ConversationEnded]
     Nothing -> []
@@ -70,7 +77,7 @@ eventsFor state = \case
               _ -> adjacent
             turns = [Event.PlayerTurned direction | direction /= playerDirection state]
          in turns
-              <> [Event.PlayerMoved destination | canStand state destination && isNothing (GameState.npcAt state adjacent)]
+              <> if isNothing (GameState.npcAt state adjacent) then movementEvents state destination else []
   _ -> []
 
 move :: Direction -> Position -> Position
@@ -79,6 +86,19 @@ move direction (Position column row) = case direction of
   North -> Position column (row + 1)
   South -> Position column (row - 1)
   West -> Position (column - 1) row
+
+-- | A warp is triggered only on entry, so reciprocal warps do not immediately loop.
+movementEvents :: GameState -> Position -> [Event]
+movementEvents state destination
+  | not (canStand state destination) = []
+  | otherwise = case find ((== destination) . Warp.source) (warps (world state)) of
+      Nothing -> [Event.PlayerMoved destination]
+      Just warp ->
+        let target = Warp.destination warp
+            arrived = state{playerMap = Location.mapId target, playerPosition = Location.position target}
+         in if canStand arrived (Location.position target)
+              then [Event.PlayerMoved destination, Event.PlayerWarped target]
+              else []
 
 -- | Interpret an input and return the resulting state and recorded facts.
 step :: GameState -> Input -> (GameState, [Event])
@@ -103,6 +123,7 @@ walkable = \case
   Rock -> False
   Sand -> True
   Sign -> False
+  Stairs -> True
   TallGrass -> True
   Tree -> False
   Wall -> False

@@ -85,10 +85,13 @@ library
         Critters.State
         Critters.State.Conversation
         Critters.State.GameState
+        Critters.State.Location
+        Critters.State.MapId
         Critters.State.Npc
         Critters.State.NpcId
         Critters.State.Position
         Critters.State.Tile
+        Critters.State.Warp
         Critters.State.World
 
     -- Modules included in this library but not exported.

@@ -3,7 +3,7 @@ module Critters.Interface.TUI (height, input, output, render, width, writeLog) w
 import Critters.Input (Input)
 import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI.Keyboard qualified as Keyboard
-import Critters.State.GameState (GameState (..), conversationText, npcAt)
+import Critters.State.GameState (GameState (..), conversationText, npcAt, world)
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
 import Critters.State.World (World (..), tileAt)
@@ -63,6 +63,7 @@ render state = Text.unlines (rows <> maybe [] (\line -> ["", line]) (conversatio
           Just Rock -> "🪨"
           Just Sand -> "🟨"
           Just Sign -> "🪧"
+          Just Stairs -> "🪜"
           Just TallGrass -> "🌿"
           Just Tree -> "🌳"
           Just Wall -> "🧱"
