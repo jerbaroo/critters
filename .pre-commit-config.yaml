@@ -1,16 +1,16 @@
 repos:
   - repo: local
     hooks:
-      - id: test
-        name: Test
-        entry: just test
+      - id: tilia
+        name: Tilia
+        entry: bash -c 'cd critters && exec tilia inplace --check-ast --must-not-decline'
         language: system
         files: ^critters/.*\.(cabal|hs|hs-boot|hsig)$
         pass_filenames: false
         require_serial: true
-      - id: tilia
-        name: Tilia
-        entry: bash -c 'cd critters && exec tilia inplace --check-ast --must-not-decline'
+      - id: test
+        name: Test
+        entry: just test
         language: system
         files: ^critters/.*\.(cabal|hs|hs-boot|hsig)$
         pass_filenames: false

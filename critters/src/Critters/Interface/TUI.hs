@@ -1,16 +1,26 @@
-module Critters.Interface.TUI (height, input, output, render, width, writeLog) where
+module Critters.Interface.TUI (height, input, output, redraw, render, renderFrame, width, writeLog) where
 
 import Critters.Input (Input)
 import Critters.Input.Direction (Direction (..))
+import Critters.Interface.TUI.Cell (Cell (..))
+import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Interface.TUI.Keyboard qualified as Keyboard
 import Critters.State.GameState (GameState (..), conversationText, npcAt, world)
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
 import Critters.State.World (tileAt)
+import Data.Char (isControl)
+import Data.Char.WCWidth (wcwidth)
+import Data.List (groupBy)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
+import Data.Text.Lazy.Builder (toLazyText)
+import Data.Text.Lazy.Builder.Int (decimal)
+import System.IO (hFlush, stdout)
+import Witch (from)
 
 -- | Editable viewport dimensions, in tiles. Each tile uses two terminal columns.
 height :: Int
@@ -23,25 +33,75 @@ input :: FilePath -> IO Input
 input logPath = do
   Keyboard.input >>= \case
     Just userInput -> pure userInput
-    Nothing -> writeLog () logPath "Unrecognized input." >> input logPath
+    Nothing -> writeLog [] logPath "Unrecognized input." >> input logPath
 
-output :: GameState -> IO ()
-output state = do
-  TextIO.putStr $
-    "\ESC[2J\ESC[H"
-      <> Text.replace "\n" "\r\n" (render state)
+output :: [[Cell]] -> GameState -> IO [[Cell]]
+output previous state = do
+  let rows = renderFrame state
+  TextIO.putStr (redraw previous rows)
+  hFlush stdout
+  pure rows
+
+-- | Replace changed cells using absolute cursor positions. An empty previous
+-- frame means this is the first draw, so clear the screen once.
+redraw :: [[Cell]] -> [[Cell]] -> Text
+redraw [] rows = "\ESC[0m\ESC[2J\ESC[H" <> Text.intercalate "\r\n" (map renderRow rows)
+redraw previous rows =
+  Text.concat
+    [ "\ESC[" <> number row <> ";" <> number column <> "H" <> renderRow [cell]
+    | (row, (oldRow, cells)) <- zip [1 :: Int ..] (zip (previous <> repeat []) rows),
+      let old = Map.fromList (positioned oldRow),
+      (column, cell) <- positioned cells,
+      Map.lookup column old /= Just cell
+    ]
+  where
+    number value = from (toLazyText (decimal value))
+    positioned cells = zip (scanl (\column cell -> column + Cell.columns cell) 1 cells) cells
+
+render :: GameState -> Text
+render = Text.intercalate "\n" . map renderRow . renderFrame
+
+-- | Two padded text rows, clipped to the viewport's column width.
+renderConversation :: Text -> [[Cell]]
+renderConversation message = map row $ take 2 (wrapped <> repeat "")
+  where
+    columns = width * 2
+    plain = Text.filter (\value -> value == '\n' || not (isControl value)) message
+    row line =
+      [ cell
+      | characters <- groupBy (\_ value -> wcwidth value == 0) (from (line <> Text.replicate (columns - textWidth line) " ")),
+        let cell = Cell (from characters) True,
+        Cell.columns cell > 0
+      ]
+    split remaining line remainingText = case Text.uncons remainingText of
+      Nothing -> (line, "")
+      Just (value, rest)
+        | characterWidth > remaining -> (line, remainingText)
+        | otherwise -> split (remaining - characterWidth) (line <> from [value]) rest
+        where
+          characterWidth = max 0 (wcwidth value)
+    textWidth = Text.foldl' (\total value -> total + max 0 (wcwidth value)) 0
+    wrap remainingText
+      | Text.null remainingText = [""]
+      | otherwise =
+          let (line, rest) = split columns "" remainingText
+           in line : if Text.null rest then [] else wrap rest
+    wrapped = concatMap wrap (Text.splitOn "\n" plain)
 
 -- | A fixed viewport centered on the player, with north at the top and blanks
 -- for missing cells, including those outside the map.
-render :: GameState -> Text
-render state = Text.unlines (rows <> maybe [] (\line -> ["", line]) (conversationText state))
+renderFrame :: GameState -> [[Cell]]
+renderFrame state = case conversationText state of
+  Just message -> take (height - 2) rows <> renderConversation message
+  Nothing -> rows
   where
-    building tile marker roof position
+    building tile symbol roof position
       | tileAt (world state) position{x = x position - 1} /= Just tile
           && tileAt (world state) position{y = y position + 1} /= Just tile =
-          marker
+          symbol
       | otherwise = roof
-    cell position
+    cell position = Cell (marker position) False
+    marker position
       | position == playerPosition state = "🧑"
       | isJust (npcAt state position) = "🧓"
       | otherwise = case tileAt (world state) position of
@@ -73,9 +133,16 @@ render state = Text.unlines (rows <> maybe [] (\line -> ["", line]) (conversatio
     originX = x (playerPosition state) - width `div` 2
     originY = y (playerPosition state) + height `div` 2
     rows =
-      [ Text.concat [cell (Position (originX + column) (originY - row)) | column <- [0 .. width - 1]]
+      [ [cell (Position (originX + column) (originY - row)) | column <- [0 .. width - 1]]
       | row <- [0 .. height - 1]
       ]
 
-writeLog :: () -> FilePath -> Text -> IO ()
+renderRow :: [Cell] -> Text
+renderRow [] = ""
+renderRow (first : rest) =
+  let (same, remaining) = span ((== whiteBackground first) . whiteBackground) rest
+      text = Text.concat (map glyph (first : same))
+   in (if whiteBackground first then "\ESC[30;107m" <> text <> "\ESC[0m" else text) <> renderRow remaining
+
+writeLog :: [[Cell]] -> FilePath -> Text -> IO ()
 writeLog _ = TextIO.appendFile

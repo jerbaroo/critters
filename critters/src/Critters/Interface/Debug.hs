@@ -19,8 +19,8 @@ input logPath = do
         Just userInput -> pure userInput
         Nothing -> writeLog () logPath "Unrecognized input." >> input logPath
 
-output :: GameState -> IO ()
-output = mapM_ TextIO.putStrLn . conversationText
+output :: () -> GameState -> IO ()
+output _ = mapM_ TextIO.putStrLn . conversationText
 
 writeLog :: () -> FilePath -> Text -> IO ()
 writeLog _ logPath message = do

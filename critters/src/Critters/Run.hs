@@ -41,19 +41,19 @@ loadHistory path =
         Right history -> pure history
     False -> writeHistory path [] >> pure []
 
-loop :: FilePath -> Interface a -> FilePath -> [Event] -> GameState -> IO ()
-loop logPath interface saveFile history state = do
+loop :: FilePath -> Interface a -> a -> FilePath -> [Event] -> GameState -> IO ()
+loop logPath interface context saveFile history state = do
   userInput <- interface.input logPath
   let command = Engine.commandFor state userInput
       (nextState, events) = Engine.step state userInput
-  context <- interface.output nextState
-  interface.log context logPath $ "Input: " <> pretty userInput
-  interface.log context logPath $ "Command: " <> maybe "Nothing" pretty command
-  mapM_ (\event -> interface.log context logPath $ "Event: " <> pretty event) events
+  nextContext <- interface.output context nextState
+  interface.log nextContext logPath $ "Input: " <> pretty userInput
+  interface.log nextContext logPath $ "Command: " <> maybe "Nothing" pretty command
+  mapM_ (\event -> interface.log nextContext logPath $ "Event: " <> pretty event) events
   nextHistory <- saveEvents saveFile history events
   case command of
     Just Command.Quit -> exitSuccess
-    _ -> loop logPath interface saveFile nextHistory nextState
+    _ -> loop logPath interface nextContext saveFile nextHistory nextState
 
 run :: IO ()
 run = do
@@ -65,11 +65,11 @@ run = do
   state <- loadGameState gameFile
   history <- loadHistory saveFile
   let resumedState = Save.apply state history
-  Interface.select (CLIOptions.interfaceType configuration) $ \interface -> do
-    context <- Interface.output interface resumedState
+  Interface.select (CLIOptions.interfaceType configuration) $ \interface initialContext -> do
+    context <- Interface.output interface initialContext resumedState
     interface.log context logPath $ "Loaded game from " <> from gameFile
     interface.log context logPath $ from $ toLazyText $ "Replayed events: " <> decimal (length history)
-    loop logPath interface saveFile history resumedState
+    loop logPath interface context saveFile history resumedState
 
 saveEvents :: FilePath -> [Event] -> [Event] -> IO [Event]
 saveEvents _ history [] = pure history

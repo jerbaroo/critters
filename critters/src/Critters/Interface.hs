@@ -12,10 +12,10 @@ import Prelude (FilePath, IO, ($))
 data Interface a = Interface
   { input :: FilePath -> IO Input,
     log :: a -> FilePath -> Text -> IO (),
-    output :: GameState -> IO a
+    output :: a -> GameState -> IO a
   }
 
-select :: InterfaceType -> (Interface () -> IO result) -> IO result
+select :: InterfaceType -> (forall a. Interface a -> a -> IO result) -> IO result
 select Debug use =
   use
     Interface
@@ -23,6 +23,7 @@ select Debug use =
         log = Debug.writeLog,
         output = Debug.output
       }
+    ()
 select TUI use =
   Keyboard.withTerminal $
     use
@@ -31,3 +32,4 @@ select TUI use =
           log = TUI.writeLog,
           output = TUI.output
         }
+      []

@@ -8,6 +8,8 @@ import Critters.Event qualified as Event
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI qualified as TUI
+import Critters.Interface.TUI.Cell (Cell (..))
+import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Save qualified as Save
 import Critters.State (Conversation (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
 import Data.Aeson qualified as Aeson
@@ -540,9 +542,12 @@ tuiTests =
           && tile (view npcState) (0, 0) == "🧑",
       testCase "Empty and ragged worlds retain a fixed viewport" $
         forM_ [filledWorld [], filledWorld [[]], filledWorld [[Wall], [], [Ground, Water]]] $ \layout -> do
-          let rows = view (gameState (Position minBound maxBound) layout)
+          let state = gameState (Position minBound maxBound) layout
+              rows = view state
           assertBool "Expected the configured rows and one wide glyph per floor cell" $
-            length rows == TUI.height && all ((== TUI.width) . Text.length) rows
+            length rows == TUI.height
+              && all ((== TUI.width) . Text.length) rows
+              && all ((== TUI.width * 2) . sum . map Cell.columns) (TUI.renderFrame state)
           assertBool "Expected even out-of-world players to remain centered" $
             tile rows (0, 0) == "🧑" && sum (map (Text.count "🧑") rows) == 1,
       testCase "Movement scrolls terrain while keeping the player centered" $
@@ -559,13 +564,72 @@ tuiTests =
         let rows = view (gameState (Position (-1) (-1)) (filledWorld [[Ledge East, Ledge North, Ledge South, Ledge West]]))
          in assertBool "Expected arrows showing the permitted crossing direction" $
               Text.concat [tile rows (column, 1) | column <- [1 .. 4]] == "⏩🔺🔻⏪",
-      testCase "Render dialogue below the map" $
+      testCase "Render dialogue in two white rows within the viewport" $
         forM_ [(0, "Hello!"), (1, "Visit my lab.")] $ \(index, expected) ->
           let active = npcState{conversation = Just (Conversation index (NpcId "guide"))}
               drawing = view active
-           in assertBool "Expected the current line after an intact fixed-size map" $
-                take TUI.height drawing == view npcState
-                  && drop TUI.height drawing == ["", expected],
+           in assertBool "Expected a fixed-height viewport with two padded white rows and a centered player" $
+                length drawing == TUI.height
+                  && take (TUI.height - 2) drawing == take (TUI.height - 2) (view npcState)
+                  && drop (TUI.height - 2) drawing == [styled (Text.justifyLeft columns ' ' expected), styled (Text.replicate columns " ")]
+                  && all ((== columns) . sum . map Cell.columns) (TUI.renderFrame active)
+                  && tile drawing (0, 0) == "🧑",
+      testCase "Redraw changed colors even when characters match"
+        $ forM_
+          [ (False, True, styled " "),
+            (True, False, " ")
+          ]
+        $ \(previous, next, expected) ->
+          assertBool "Expected a color-only cell change to be drawn and its style reset" $
+            TUI.redraw [[Cell " " previous]] [[Cell " " next]] == "\ESC[1;1H" <> expected,
+      testCase "Redraw only changed cells"
+        $ assertBool "Expected individual cell replacements at their row and column, without clearing other content"
+        $ TUI.redraw
+          [[Cell "a" False, Cell "b" False], [Cell "c" False, Cell "d" False]]
+          [[Cell "a" False, Cell "x" False], [Cell "c" False, Cell "y" False]]
+          == "\ESC[1;2Hx\ESC[2;2Hy",
+      testCase "Position emoji updates after wide padding"
+        $ assertBool "Expected the changed emoji after two full-width cells to start in terminal column five"
+        $ TUI.redraw
+          [[Cell "\x3000" False, Cell "🧱" False, Cell "🪜" False]]
+          [[Cell "\x3000" False, Cell "🧱" False, Cell "⬜" False]]
+          == "\ESC[1;5H⬜",
+      testCase "Redraw shifted cells when glyph widths change"
+        $ forM_
+          [ (["界", "b", "c"], ["a", "b", "c", " "], "\ESC[1;1Ha\ESC[1;2Hb\ESC[1;3Hc\ESC[1;4H "),
+            (["a", "b", "c", " "], ["界", "b", "c"], "\ESC[1;1H界\ESC[1;3Hb\ESC[1;4Hc")
+          ]
+        $ \(previous, next, expected) ->
+          assertBool "Expected shifted glyphs to move even when their text is unchanged" $
+            TUI.redraw [map (\value -> Cell value False) previous] [map (\value -> Cell value False) next] == expected,
+      testCase "Respect line breaks and discard further dialogue rows"
+        $ assertBool "Expected only the first two explicit lines, with colors reset after each"
+        $ dialogueRows "First line\r\nSecond line\nHidden third line"
+          == [styled (Text.justifyLeft columns ' ' "First line"), styled (Text.justifyLeft columns ' ' "Second line")],
+      testCase "Skip redraws for identical frames" $
+        forM_ [npcState, npcState{conversation = Just (Conversation 0 (NpcId "guide"))}] $ \state ->
+          let rows = TUI.renderFrame state
+           in assertBool "Expected unchanged frames to produce no terminal output" $
+                Text.null (TUI.redraw rows rows),
+      testCase "Wrap dialogue across two rows and clip overflow"
+        $ assertBool "Expected full-width text rows and no third-row overflow"
+        $ dialogueRows (Text.replicate columns "a" <> Text.replicate columns "b" <> "DISCARD")
+          == [styled (Text.replicate columns "a"), styled (Text.replicate columns "b")],
+      testCase "Wrap wide and combining characters by terminal columns"
+        $ forM_
+          [ ( Text.replicate (columns `div` 2) "界" <> Text.replicate columns "b" <> "DISCARD",
+              [styled (Text.replicate (columns `div` 2) "界"), styled (Text.replicate columns "b")]
+            ),
+            ( Text.replicate (columns - 1) "a" <> "界z",
+              [styled (Text.replicate (columns - 1) "a" <> " "), styled ("界z" <> Text.replicate (columns - 3) " ")]
+            ),
+            ( Text.replicate columns "e\x0301" <> Text.replicate columns "b" <> "DISCARD",
+              [styled (Text.replicate columns "e\x0301"), styled (Text.replicate columns "b")]
+            )
+          ]
+        $ \(message, expected) ->
+          assertBool "Expected complete Unicode characters within the two-row column budget" $
+            dialogueRows message == expected,
       testCase "Render missing cells as padding" $
         let rows = view (gameState (Position (-1) (-1)) (World [[Nothing, Just Ground, Nothing]] []))
          in assertBool "Expected missing cells on either side of real terrain to remain blank" $
@@ -581,7 +645,16 @@ tuiTests =
                 && tile rows (0, TUI.height `div` 2) == "\x3000"
     ]
   where
+    columns = TUI.width * 2
+    dialogueRows message =
+      drop (TUI.height - 2) $
+        view
+          npcState
+            { conversation = Just (Conversation 0 (NpcId "guide")),
+              npcs = Map.adjust (\npc -> npc{dialogue = [message]}) (NpcId "guide") (npcs npcState)
+            }
     largeWorld = filledWorld (replicate (TUI.height * 2) (replicate (TUI.width * 2) Ground))
+    styled line = "\ESC[30;107m" <> line <> "\ESC[0m"
     tile rows (column, row) = Text.take 1 $ Text.drop (TUI.width `div` 2 + column) (rows !! (TUI.height `div` 2 - row))
     view = Text.lines . TUI.render
 

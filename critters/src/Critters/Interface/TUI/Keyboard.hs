@@ -1,10 +1,10 @@
 module Critters.Interface.TUI.Keyboard (input, withTerminal) where
 
-import Control.Exception (bracket, finally)
+import Control.Exception (bracket, bracket_, finally)
 import Critters.Input (Input)
 import Critters.Input qualified as Input
 import System.Exit (exitSuccess)
-import System.IO (BufferMode (NoBuffering), hGetBuffering, hGetEcho, hIsTerminalDevice, hLookAhead, hSetBuffering, hSetEcho, hWaitForInput, isEOF, stdin)
+import System.IO (BufferMode (NoBuffering), hFlush, hGetBuffering, hGetEcho, hIsTerminalDevice, hLookAhead, hSetBuffering, hSetEcho, hWaitForInput, isEOF, stdin, stdout)
 import System.IO.Error (catchIOError, isEOFError)
 
 input :: IO (Maybe Input)
@@ -54,16 +54,27 @@ ready =
   catchIOError (hWaitForInput stdin 50) $ \err ->
     if isEOFError err then pure False else ioError err
 
--- | Read individual keys without echo, restoring the original modes on exit.
-withTerminal :: IO a -> IO a
-withTerminal action =
-  hIsTerminalDevice stdin >>= \case
+withHiddenCursor :: IO a -> IO a
+withHiddenCursor action =
+  hIsTerminalDevice stdout >>= \case
     False -> action
     True ->
-      bracket
-        ((,) <$> hGetBuffering stdin <*> hGetEcho stdin)
-        (\(buffering, echo) -> hSetBuffering stdin buffering `finally` hSetEcho stdin echo)
-        $ \_ -> do
-          hSetBuffering stdin NoBuffering
-          hSetEcho stdin False
-          action
+      bracket_
+        (putStr "\ESC[?25l" >> hFlush stdout)
+        (putStr "\ESC[?25h" >> hFlush stdout)
+        action
+
+-- | Hide the cursor and read individual keys without echo, restoring on exit.
+withTerminal :: IO a -> IO a
+withTerminal action =
+  withHiddenCursor $
+    hIsTerminalDevice stdin >>= \case
+      False -> action
+      True ->
+        bracket
+          ((,) <$> hGetBuffering stdin <*> hGetEcho stdin)
+          (\(buffering, echo) -> hSetBuffering stdin buffering `finally` hSetEcho stdin echo)
+          $ \_ -> do
+            hSetBuffering stdin NoBuffering
+            hSetEcho stdin False
+            action
