@@ -5,6 +5,7 @@ import Control.Monad (forM_)
 import Critters.Engine qualified as Engine
 import Critters.Event qualified as Event
 import Critters.Input qualified as Input
+import Critters.Interface.TUI qualified as TUI
 import Critters.Save qualified as Save
 import Critters.State (GameState (..), Position (..), Tile (..), World (..), initialState, tileAt)
 import Data.Aeson qualified as Aeson
@@ -250,7 +251,49 @@ stateTests =
     state = GameState (Position 2 1) (World [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [engineTests, eventTests, inputTests, saveTests, stateTests]
+tests = testGroup "Critters" [engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests]
+
+tuiTests :: TestTree
+tuiTests =
+  testGroup
+    "TUI"
+    [ testCase "Camera follows the player and stops at world edges"
+        $ forM_
+          [ (Position 0 0, (0, 0)),
+            (Position 0 (TUI.height * 2 - 1), (0, TUI.height - 1)),
+            (Position TUI.width TUI.height, (TUI.width `div` 2, TUI.height `div` 2)),
+            (Position (TUI.width * 2 - 1) 0, (TUI.width - 1, 0)),
+            (Position (TUI.width * 2 - 1) (TUI.height * 2 - 1), (TUI.width - 1, TUI.height - 1))
+          ]
+        $ \(position, destination) ->
+          assertBool "Expected the player at the centered or clamped viewport position" $
+            tile (view (GameState position largeWorld)) destination == "@ ",
+      testCase "Empty and ragged worlds retain a fixed viewport" $
+        forM_ [World [], World [[]], World [[Wall], [], [Ground, Water]]] $ \layout -> do
+          let rows = view (GameState (Position minBound maxBound) layout)
+          assertBool "Expected the configured rows and two-column tiles without borders" $
+            length rows == TUI.height && all ((== TUI.width * 2) . Text.length) rows
+          assertBool "Expected out-of-viewport players to be omitted" $
+            all (not . Text.isInfixOf "@") rows,
+      testCase "Movement appears above the old position when walking north" $
+        let state = GameState (Position 2 2) largeWorld
+            (nextState, _) = Engine.step state Input.Up
+         in assertBool "Expected the player one row higher, with the old terrain restored" $
+              tile (view state) (2, 2) == "@ "
+                && tile (view nextState) (2, 3) == "@ "
+                && tile (view nextState) (2, 2) == ". ",
+      testCase "Render tiles north-up with the player over the terrain" $
+        let rows = view (GameState (Position 0 0) (World [[TallGrass, Wall, Ground], [Ground, Water, Wall]]))
+         in assertBool "Expected all tile glyphs, padding, and the player at the bottom-left" $
+              Text.take 6 (rows !! (TUI.height - 2)) == "^ ##. "
+                && Text.take 6 (rows !! (TUI.height - 1)) == "@ ~~##"
+                && tile rows (3, 0) == "  "
+                && tile rows (0, TUI.height - 1) == "  "
+    ]
+  where
+    largeWorld = World (replicate (TUI.height * 2) (replicate (TUI.width * 2) Ground))
+    tile rows (column, row) = Text.take 2 $ Text.drop (column * 2) (rows !! (TUI.height - row - 1))
+    view = Text.lines . TUI.render
 
 withSaveFile :: (FilePath -> IO a) -> IO a
 withSaveFile action = do

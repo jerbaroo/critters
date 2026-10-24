@@ -75,6 +75,8 @@ library
         Critters.Input.Direction
         Critters.Interface
         Critters.Interface.Debug
+        Critters.Interface.TUI
+        Critters.Interface.TUI.Keyboard
         Critters.InterfaceType
         Critters.Pretty
         Critters.Run

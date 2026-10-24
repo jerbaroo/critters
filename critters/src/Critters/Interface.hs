@@ -2,21 +2,32 @@ module Critters.Interface (Interface (..), select) where
 
 import Critters.Input (Input)
 import Critters.Interface.Debug qualified as Debug
-import Critters.InterfaceType (InterfaceType (Debug))
+import Critters.Interface.TUI qualified as TUI
+import Critters.Interface.TUI.Keyboard qualified as Keyboard
+import Critters.InterfaceType (InterfaceType (Debug, TUI))
 import Critters.State.GameState (GameState)
 import Data.Text (Text)
-import Prelude (IO)
+import Prelude (IO, ($))
 
-data Interface = Interface
+data Interface a = Interface
   { input :: IO Input,
-    log :: Text -> IO (),
-    output :: GameState -> IO ()
+    log :: a -> Text -> IO (),
+    output :: GameState -> IO a
   }
 
-select :: InterfaceType -> Interface
-select Debug =
-  Interface
-    { input = Debug.input,
-      log = Debug.writeLog,
-      output = Debug.output
-    }
+select :: InterfaceType -> (Interface () -> IO result) -> IO result
+select Debug use =
+  use
+    Interface
+      { input = Debug.input,
+        log = Debug.writeLog,
+        output = Debug.output
+      }
+select TUI use =
+  Keyboard.withTerminal $
+    use
+      Interface
+        { input = TUI.input,
+          log = TUI.writeLog,
+          output = TUI.output
+        }

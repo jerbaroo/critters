@@ -1,4 +1,4 @@
 module Critters.InterfaceType (InterfaceType (..)) where
 
-data InterfaceType = Debug
+data InterfaceType = Debug | TUI
   deriving stock (Eq)

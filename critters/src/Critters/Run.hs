@@ -42,16 +42,16 @@ loadHistory path = do
         Right history -> pure history
     else writeHistory path [] >> pure []
 
-loop :: Interface -> FilePath -> [Event] -> GameState -> IO ()
+loop :: Interface a -> FilePath -> [Event] -> GameState -> IO ()
 loop interface saveFile history state = do
   userInput <- Interface.input interface
   let command = Engine.commandFor state userInput
       (nextState, events) = Engine.step state userInput
-  Interface.log interface $ "Input: " <> pretty userInput
-  Interface.log interface $ "Command: " <> maybe "Nothing" pretty command
-  mapM_ (\event -> Interface.log interface $ "Event: " <> pretty event) events
+  context <- Interface.output interface nextState
+  Interface.log interface context $ "Input: " <> pretty userInput
+  Interface.log interface context $ "Command: " <> maybe "Nothing" pretty command
+  mapM_ (\event -> Interface.log interface context $ "Event: " <> pretty event) events
   nextHistory <- saveEvents saveFile history events
-  Interface.output interface nextState
   case command of
     Just Command.Quit -> exitSuccess
     _ -> loop interface saveFile nextHistory nextState
@@ -60,15 +60,15 @@ run :: IO ()
 run = do
   configuration <- Options.execParser CLI.options
   let gameFile = CLIOptions.gameFile configuration
-      interface = Interface.select (CLIOptions.interfaceType configuration)
       saveFile = CLIOptions.saveFile configuration
   state <- loadGameState gameFile
   history <- loadHistory saveFile
   let resumedState = Save.apply state history
-  Interface.log interface $ "Loaded game from " <> from gameFile
-  Interface.log interface $ from $ toLazyText $ "Replayed events: " <> decimal (length history)
-  Interface.output interface resumedState
-  loop interface saveFile history resumedState
+  Interface.select (CLIOptions.interfaceType configuration) $ \interface -> do
+    context <- Interface.output interface resumedState
+    Interface.log interface context $ "Loaded game from " <> from gameFile
+    Interface.log interface context $ from $ toLazyText $ "Replayed events: " <> decimal (length history)
+    loop interface saveFile history resumedState
 
 saveEvents :: FilePath -> [Event] -> [Event] -> IO [Event]
 saveEvents _ history [] = pure history

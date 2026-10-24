@@ -1,7 +1,7 @@
 module Critters.CLI (options) where
 
 import Critters.CLI.Options (Options (..))
-import Critters.InterfaceType (InterfaceType (Debug))
+import Critters.InterfaceType (InterfaceType (Debug, TUI))
 import Data.Text (Text)
 import Options.Applicative qualified as Options
 import Witch (from)
@@ -18,10 +18,11 @@ interfaceParser =
   Options.option
     ( Options.eitherReader $ \name -> case from name :: Text of
         "debug" -> Right Debug
-        _ -> Left "Expected interface: debug"
+        "tui" -> Right TUI
+        _ -> Left "Expected interface: debug or tui"
     )
-    $ Options.completeWith ["debug"]
-      <> Options.help "Interface to use (debug)"
+    $ Options.completeWith ["debug", "tui"]
+      <> Options.help "Interface to use (debug or tui)"
       <> Options.long "interface"
       <> Options.metavar "INTERFACE"
 

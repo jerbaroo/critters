@@ -17,11 +17,11 @@ input = do
     False ->
       Input.parse <$> TextIO.getLine >>= \case
         Just userInput -> pure userInput
-        Nothing -> writeLog "Unrecognized input." >> input
+        Nothing -> writeLog () "Unrecognized input." >> input
 
 -- | The debug interface currently displays activity through 'writeLog'.
 output :: GameState -> IO ()
 output _ = pure ()
 
-writeLog :: Text -> IO ()
-writeLog = TextIO.putStrLn
+writeLog :: () -> Text -> IO ()
+writeLog _ = TextIO.putStrLn
