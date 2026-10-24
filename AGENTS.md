@@ -2,6 +2,9 @@
 
 - Write the game in Haskell, keeping serializable state, the pure game engine,
   and rendering separate.
+- Present a concise plan to the user before implementation, using Haskell types
+  and type signatures. Where appropriate, include a table mapping inputs to
+  commands and events.
 - Keep top-level definitions, record fields, and export lists alphabetical.
 - Set the language and all `default-extensions` in a shared Cabal common stanza
   imported by every component. All components must use the same language and

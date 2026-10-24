@@ -77,7 +77,7 @@ eventsFor state = \case
               _ -> adjacent
             turns = [Event.PlayerTurned direction | direction /= playerDirection state]
          in turns
-              <> if isNothing (GameState.npcAt state adjacent) then movementEvents state destination else []
+              <> if isNothing (GameState.npcAt state adjacent) then movementEvents state direction destination else []
   _ -> []
 
 move :: Direction -> Position -> Position
@@ -88,17 +88,19 @@ move direction (Position column row) = case direction of
   West -> Position (column - 1) row
 
 -- | A warp is triggered only on entry, so reciprocal warps do not immediately loop.
-movementEvents :: GameState -> Position -> [Event]
-movementEvents state destination
+movementEvents :: GameState -> Direction -> Position -> [Event]
+movementEvents state direction destination
   | not (canStand state destination) = []
   | otherwise = case find ((== destination) . Warp.source) (warps (world state)) of
       Nothing -> [Event.PlayerMoved destination]
-      Just warp ->
-        let target = Warp.destination warp
-            arrived = state{playerMap = Location.mapId target, playerPosition = Location.position target}
-         in if canStand arrived (Location.position target)
-              then [Event.PlayerMoved destination, Event.PlayerWarped target]
-              else []
+      Just warp
+        | maybe True (== direction) (Warp.entranceDirection warp) ->
+            let target = Warp.destination warp
+                arrived = state{playerMap = Location.mapId target, playerPosition = Location.position target}
+             in if canStand arrived (Location.position target)
+                  then [Event.PlayerMoved destination, Event.PlayerWarped target]
+                  else []
+      _ -> []
 
 -- | Interpret an input and return the resulting state and recorded facts.
 step :: GameState -> Input -> (GameState, [Event])

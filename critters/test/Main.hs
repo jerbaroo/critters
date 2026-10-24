@@ -383,6 +383,9 @@ stateTests =
           testCase "Invalid JSON"
             $ assertBool "Expected a parse error"
             $ isLeft (Aeson.eitherDecode @GameState "{"),
+          testCase "Invalid warp entrance direction"
+            $ assertBool "Expected an unknown movement direction to fail decoding"
+            $ isLeft (Aeson.eitherDecode @Warp "{\"destination\":{\"mapId\":\"room\",\"position\":{\"x\":0,\"y\":1}},\"entranceDirection\":\"up\",\"source\":{\"x\":1,\"y\":1}}"),
           testCase "Missing coordinate"
             $ assertBool "Expected a parse error"
             $ isLeft (Aeson.eitherDecode @Position "{\"x\":1}"),
@@ -418,6 +421,16 @@ stateTests =
               assertBool "Expected an explicit direction in the tile JSON" $
                 Aeson.eitherDecode encoded == Right (Ledge direction)
                   && Aeson.encode (Ledge direction) == encoded,
+          testCase "Encode and decode warp entrance directions"
+            $ forM_
+              [ ("{\"destination\":{\"mapId\":\"room\",\"position\":{\"x\":0,\"y\":1}},\"source\":{\"x\":1,\"y\":1}}", Nothing),
+                ("{\"destination\":{\"mapId\":\"room\",\"position\":{\"x\":0,\"y\":1}},\"entranceDirection\":\"west\",\"source\":{\"x\":1,\"y\":1}}", Just West)
+              ]
+            $ \(encoded, allowed) ->
+              let expected = Warp (Location (MapId "room") (Position 0 1)) allowed (Position 1 1)
+               in assertBool "Expected an optional entrance direction in the warp JSON" $
+                    Aeson.eitherDecode encoded == Right expected
+                      && Aeson.eitherDecode encoded == Right (Aeson.toJSON expected),
           testCase "Load an independently written fixture"
             $ assertBool "Expected the fixture's state"
             $ Aeson.eitherDecode fixture == Right state,
@@ -457,7 +470,9 @@ stateTests =
             forM_ [Position 0 0, Position (-1) 2, Position minBound maxBound] assertRoundTrip,
           testCase "Tile" $
             forM_ [Door, Fence, Flowers, Grass, Ground, Arena, House, Laboratory, Ledge East, Ledge North, Ledge South, Ledge West, Shop, Path, Clinic, Rock, Sand, Sign, Stairs, TallGrass, Tree, Wall, Water] assertRoundTrip,
-          testCase "Warp" $ assertRoundTrip (Warp (Location (MapId "room") (Position 0 1)) (Position 1 2)),
+          testCase "Warp" $
+            forM_ [Nothing, Just East, Just North, Just South, Just West] $ \allowed ->
+              assertRoundTrip (Warp (Location (MapId "room") (Position 0 1)) allowed (Position 1 2)),
           testCase "World" $
             forM_ [filledWorld [], filledWorld [[]], filledWorld [[Ground], [], [Water, Wall]], World [[Nothing, Just Ground, Nothing]] [], world warpState] assertRoundTrip
         ],
@@ -575,8 +590,8 @@ warpState =
   (gameState (Position 1 1) (filledWorld []))
     { maps =
         Map.fromList
-          [ (MapId "overworld", (filledWorld [[Ground, Path, Ground], replicate 3 Ground, replicate 3 Ground]){warps = [Warp (Location (MapId "room") (Position 0 1)) (Position 1 2)]}),
-            (MapId "room", (filledWorld [[Ground, Ground], [Ground, Water]]){warps = [Warp (Location (MapId "overworld") (Position 1 1)) (Position 0 0)]})
+          [ (MapId "overworld", (filledWorld [[Ground, Path, Ground], replicate 3 Ground, replicate 3 Ground]){warps = [Warp (Location (MapId "room") (Position 0 1)) Nothing (Position 1 2)]}),
+            (MapId "room", (filledWorld [[Ground, Ground], [Ground, Water]]){warps = [Warp (Location (MapId "overworld") (Position 1 1)) Nothing (Position 0 0)]})
           ]
     }
 
@@ -602,11 +617,27 @@ warpTests =
           assertBool "Expected missing maps, missing cells and NPCs to block arrival" $
             Engine.step current Input.Up == (current, []),
       testCase "Do not chain reciprocal warps on arrival" $
-        let current = warpState{maps = Map.adjust (\layout -> layout{warps = [Warp (Location (MapId "overworld") (Position 1 1)) (Position 0 1)]}) (MapId "room") (maps warpState)}
+        let current = warpState{maps = Map.adjust (\layout -> layout{warps = [Warp (Location (MapId "overworld") (Position 1 1)) Nothing (Position 0 1)]}) (MapId "room") (maps warpState)}
             (arrived, events) = Engine.step current Input.Up
          in assertBool "Expected one transition per input even when the arrival cell has a return warp" $
               playerMap arrived == MapId "room"
                 && events == [Event.PlayerMoved (Position 1 2), Event.PlayerWarped (Location (MapId "room") (Position 0 1))],
+      testCase "Enforce required entrance directions" $
+        forM_ [East, North, South, West] $ \allowed ->
+          forM_
+            [ (East, Input.Right, Position 0 1),
+              (North, Input.Up, Position 1 0),
+              (South, Input.Down, Position 1 2),
+              (West, Input.Left, Position 2 1)
+            ]
+            $ \(direction, input, origin) ->
+              let current = (withEntrance (Just allowed)){playerDirection = direction, playerPosition = origin}
+                  expected =
+                    if direction == allowed
+                      then (current{playerMap = MapId "room", playerPosition = Position 0 1}, [Event.PlayerMoved (Position 1 1), Event.PlayerWarped (Location (MapId "room") (Position 0 1))])
+                      else (current, [])
+               in assertBool "Expected stairs to admit only their configured movement direction" $
+                    Engine.step current input == expected,
       testCase "Ignore NPCs in other maps" $
         let current = warpState{npcs = Map.singleton (NpcId "outside") (Npc ["Hello!"] (Location (MapId "overworld") (Position 0 1)))}
             (arrived, _) = Engine.step current Input.Up
@@ -615,6 +646,10 @@ warpTests =
                 && Text.count "🧓" (TUI.render current) == 1
                 && Text.count "🧓" (TUI.render arrived) == 0
                 && snd (Engine.step arrived Input.Enter) == [],
+      testCase "Preserve turning when an entrance direction is rejected" $
+        let current = (withEntrance (Just East)){playerDirection = South, playerPosition = Position 1 0}
+         in assertBool "Expected only the facing change when approaching stairs from the wrong direction" $
+              Engine.step current Input.Up == (current{playerDirection = North}, [Event.PlayerTurned North]),
       testCase "Render the destination map" $
         let (arrived, _) = Engine.step warpState Input.Up
             rows = Text.lines (TUI.render arrived)
@@ -634,6 +669,18 @@ warpTests =
          in assertBool "Expected a return warp to restore the exterior location" $
               outside == warpState{playerDirection = South}
                 && events == [Event.PlayerTurned South, Event.PlayerMoved (Position 0 0), Event.PlayerWarped (Location (MapId "overworld") (Position 1 1))],
+      testCase "Unrestricted warps accept every direction"
+        $ forM_
+          [ (East, Input.Right, Position 0 1),
+            (North, Input.Up, Position 1 0),
+            (South, Input.Down, Position 1 2),
+            (West, Input.Left, Position 2 1)
+          ]
+        $ \(direction, input, origin) ->
+          let current = (withEntrance Nothing){playerDirection = direction, playerPosition = origin}
+           in assertBool "Expected warps without a required direction to retain their behavior" $
+                Engine.step current input
+                  == (current{playerMap = MapId "room", playerPosition = Position 0 1}, [Event.PlayerMoved (Position 1 1), Event.PlayerWarped (Location (MapId "room") (Position 0 1))]),
       testCase "Warp from ordinary floor tiles" $
         let (arrived, events) = Engine.step warpState Input.Up
          in assertBool "Expected a Path tile to trigger a transition independently of doors" $
@@ -641,6 +688,16 @@ warpTests =
                 && arrived == warpState{playerMap = MapId "room", playerPosition = Position 0 1}
                 && events == [Event.PlayerMoved (Position 1 2), Event.PlayerWarped (Location (MapId "room") (Position 0 1))]
     ]
+  where
+    withEntrance :: Maybe Direction -> GameState
+    withEntrance allowed =
+      warpState
+        { maps =
+            Map.insert
+              (MapId "overworld")
+              ((filledWorld [replicate 3 Ground, [Ground, Stairs, Ground], replicate 3 Ground]){warps = [Warp (Location (MapId "room") (Position 0 1)) allowed (Position 1 1)]})
+              (maps warpState)
+        }
 
 withSaveFile :: (FilePath -> IO a) -> IO a
 withSaveFile action = do
