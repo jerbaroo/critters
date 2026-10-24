@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Control.Monad (forM_)
+import Critters.Engine qualified as Engine
 import Critters.Event qualified as Event
 import Critters.Input qualified as Input
 import Critters.State
@@ -13,6 +14,40 @@ assertRoundTrip :: (Eq a, Aeson.FromJSON a, Aeson.ToJSON a) => a -> Assertion
 assertRoundTrip value =
   assertBool "JSON should preserve the value" $
     Aeson.eitherDecode (Aeson.encode value) == Right value
+
+engineTests :: TestTree
+engineTests =
+  testGroup
+    "Engine"
+    [ testCase "Apply recorded facts without checking movement rules"
+        $ assertBool "Expected an absolute recorded position, preserving the world"
+        $ Engine.applyEvent state (Event.PlayerMoved (Position (-4) 9))
+          == state{playerPosition = Position (-4) 9},
+      testCase "Directions use the bottom-left coordinate system"
+        $ forM_
+          [ (Input.Down, Position 2 1),
+            (Input.Left, Position 1 2),
+            (Input.Right, Position 3 2),
+            (Input.Up, Position 2 3)
+          ]
+        $ \(input, destination) ->
+          assertBool "Expected the input to produce and apply a movement fact" $
+            Engine.step state input == (state{playerPosition = destination}, [Event.PlayerMoved destination]),
+      testCase "Replay history reproduces sequential input processing" $
+        let (finalState, history) = foldl advance (state, []) [Input.Up, Input.Right, Input.Down]
+         in assertBool "Expected each input to use the latest state, with replayable facts" $
+              finalState == state{playerPosition = Position 3 2}
+                && history == map Event.PlayerMoved [Position 2 3, Position 3 3, Position 3 2]
+                && foldl Engine.applyEvent state history == finalState,
+      testCase "Unmapped and non-movement inputs leave state unchanged" $
+        forM_ [Input.Character 'x', Input.Character 'q', Input.Enter, Input.Escape] $
+          \input -> assertBool "Expected no state changes or events" (Engine.step state input == (state, []))
+    ]
+  where
+    advance (current, history) input =
+      let (next, events) = Engine.step current input
+       in (next, history <> events)
+    state = GameState (Position 2 2) (World (replicate 5 (replicate 5 Ground)))
 
 eventTests :: TestTree
 eventTests =
@@ -145,4 +180,4 @@ stateTests =
     state = GameState (Position 2 1) (World [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [eventTests, inputTests, stateTests]
+tests = testGroup "Critters" [engineTests, eventTests, inputTests, stateTests]

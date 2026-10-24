@@ -1,8 +1,8 @@
 module Critters.Run (run) where
 
-import Control.Monad (forever)
 import Critters.CLI qualified as CLI
 import Critters.Command qualified as Command
+import Critters.Engine qualified as Engine
 import Critters.Input (Input)
 import Critters.Input qualified as Input
 import Critters.Pretty (pretty)
@@ -26,6 +26,17 @@ loadGameState gameFile =
     Right (Left err) -> die $ "Invalid game file '" <> Text.pack gameFile <> "': " <> Text.pack err
     Right (Right state) -> pure state
 
+loop :: GameState -> IO ()
+loop state = do
+  input <- readInput
+  let command = Engine.commandFor state input
+      (nextState, _) = Engine.step state input
+  TextIO.putStrLn $ "Input: " <> pretty input
+  TextIO.putStrLn $ "Command: " <> maybe "Nothing" pretty command
+  case command of
+    Just Command.Quit -> exitSuccess
+    _ -> loop nextState
+
 readInput :: IO Input
 readInput = do
   TextIO.putStr "> "
@@ -42,11 +53,4 @@ run = do
   gameFile <- Options.execParser CLI.options
   state <- loadGameState gameFile
   TextIO.putStrLn $ "Loaded game from " <> Text.pack gameFile
-  forever $ do
-    input <- readInput
-    let command = Command.fromInput state input
-    TextIO.putStrLn $ "Input: " <> pretty input
-    TextIO.putStrLn $ "Command: " <> maybe "Nothing" pretty command
-    case command of
-      Just Command.Quit -> exitSuccess
-      _ -> pure ()
+  loop state
