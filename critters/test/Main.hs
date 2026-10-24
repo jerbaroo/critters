@@ -2,15 +2,17 @@ module Main (main) where
 
 import Control.Exception (bracket)
 import Control.Monad (forM_)
+import Critters.Command qualified as Command
 import Critters.Engine qualified as Engine
 import Critters.Event qualified as Event
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI qualified as TUI
 import Critters.Save qualified as Save
-import Critters.State (GameState (..), Position (..), Tile (..), World (..), initialState, tileAt)
+import Critters.State (Conversation (..), GameState (..), Npc (..), NpcId (..), Position (..), Tile (..), World (..), conversationText, initialState, tileAt)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as TextEncoding
 import Data.Text.IO qualified as TextIO
@@ -23,6 +25,94 @@ assertRoundTrip :: (Eq a, Aeson.FromJSON a, Aeson.ToJSON a) => a -> Assertion
 assertRoundTrip value =
   assertBool "JSON should preserve the value" $
     Aeson.eitherDecode (Aeson.encode value) == Right value
+
+conversationTests :: TestTree
+conversationTests =
+  testGroup
+    "Conversation"
+    [ testCase "Advance and finish a conversation" $
+        let (opened, started) = Engine.step npcState Input.Enter
+            (advanced, progressed) = Engine.step opened Input.Enter
+            (closed, ended) = Engine.step advanced Input.Enter
+            (reopened, restarted) = Engine.step closed Input.Enter
+         in assertBool "Expected two dialogue lines, closing after the last, and restarting at the first" $
+              started == [Event.ConversationStarted (NpcId "guide")]
+                && conversation opened == Just (Conversation 0 (NpcId "guide"))
+                && conversationText opened == Just "Hello!"
+                && progressed == [Event.ConversationAdvanced 1]
+                && conversation advanced == Just (Conversation 1 (NpcId "guide"))
+                && conversationText advanced == Just "Visit my lab."
+                && ended == [Event.ConversationEnded]
+                && closed == npcState
+                && conversation reopened == conversation opened
+                && restarted == started,
+      testCase "Block NPC cells and turn towards them" $
+        let current = npcState{playerDirection = North}
+            (turned, events) = Engine.step current Input.Right
+         in assertBool "Expected facing to change while the NPC prevents movement" $
+              turned == npcState
+                && events == [Event.PlayerTurned East]
+                && snd (Engine.step turned Input.Enter) == [Event.ConversationStarted (NpcId "guide")],
+      testCase "Block NPCs at ledge landings" $
+        let current =
+              npcState
+                { playerDirection = South,
+                  playerPosition = Position 2 3,
+                  world = filledWorld [replicate 4 Ground, [Ground, Ground, Ledge South, Ground], replicate 4 Ground, replicate 4 Ground]
+                }
+         in assertBool "Expected no jump onto an NPC" $
+              Engine.step current Input.Down == (current, []),
+      testCase "Choose commands from conversation context" $
+        let active = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}
+         in assertBool "Expected context-sensitive Enter and Escape, with quit always available" $
+              Engine.commandFor npcState Input.Enter == Just Command.Interact
+                && Engine.commandFor active Input.Enter == Just Command.AdvanceConversation
+                && Engine.commandFor active Input.Escape == Just Command.EndConversation
+                && Engine.commandFor npcState (Input.Character 'q') == Just Command.Quit
+                && Engine.commandFor active (Input.Character 'q') == Just Command.Quit,
+      testCase "End a conversation with Escape" $
+        let active = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}
+         in assertBool "Expected closing dialogue to restore exploration" $
+              Engine.step active Input.Escape == (npcState, [Event.ConversationEnded]),
+      testCase "Ignore conversation commands outside a conversation" $
+        forM_ [Command.AdvanceConversation, Command.EndConversation] $ \command ->
+          assertBool "Expected no conversation facts without an active conversation" $
+            Engine.eventsFor npcState command == [],
+      testCase "Ignore movement while talking" $
+        forM_ [(East, Input.Right), (North, Input.Up), (South, Input.Down), (West, Input.Left)] $ \(direction, input) ->
+          let active = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}
+           in assertBool "Expected movement to be ignored even through direct command execution" $
+                Engine.commandFor active input == Nothing
+                  && Engine.step active input == (active, [])
+                  && Engine.eventsFor active (Command.Walk direction) == []
+                  && Engine.eventsFor active Command.Interact == [],
+      testCase "Ignore NPCs outside the facing cell" $
+        forM_ [North, South, West] $ \direction ->
+          let current = npcState{playerDirection = direction}
+           in assertBool "Expected interaction to require the adjacent cell in front" $
+                Engine.step current Input.Enter == (current, []),
+      testCase "Ignore NPCs with no dialogue" $
+        let current = npcState{npcs = Map.singleton (NpcId "guide") (Npc [] (Position 2 1))}
+         in assertBool "Expected an empty dialogue to produce no conversation" $
+              Engine.step current Input.Enter == (current, []),
+      testCase "Read missing or invalid conversation lines safely" $
+        forM_ [Conversation (-1) (NpcId "guide"), Conversation 2 (NpcId "guide"), Conversation 0 (NpcId "missing")] $ \active ->
+          let current = npcState{conversation = Just active}
+           in assertBool "Expected no displayed text and a clean end when advancing" $
+                conversationText current == Nothing
+                  && Engine.step current Input.Enter == (npcState, [Event.ConversationEnded]),
+      testCase "Replay conversation facts without rechecking their preconditions" $
+        let active = Save.apply npcState [Event.ConversationStarted (NpcId "missing"), Event.ConversationAdvanced 42, Event.PlayerTurned West]
+         in assertBool "Expected facts to apply without looking up the NPC or validating dialogue" $
+              active == npcState{conversation = Just (Conversation 42 (NpcId "missing")), playerDirection = West}
+                && Save.apply active [Event.ConversationEnded] == npcState{playerDirection = West},
+      testCase "Walk again after closing dialogue" $
+        let active = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}
+            (closed, _) = Engine.step active Input.Escape
+         in assertBool "Expected normal turning and movement after closing" $
+              Engine.step closed Input.Up
+                == (npcState{playerDirection = North, playerPosition = Position 1 2}, [Event.PlayerTurned North, Event.PlayerMoved (Position 1 2)])
+    ]
 
 engineTests :: TestTree
 engineTests =
@@ -46,7 +136,7 @@ engineTests =
               (West, Input.Left, Position 3 2, Position 1 2)
             ]
             $ \(direction, input, origin, destination) ->
-              let current = (withLedge allowed){playerPosition = origin}
+              let current = (withLedge allowed){playerDirection = direction, playerPosition = origin}
                   expected =
                     if direction == allowed
                       then (current{playerPosition = destination}, [Event.PlayerMoved destination])
@@ -55,30 +145,30 @@ engineTests =
                     Engine.step current input == expected,
       testCase "Directions use the bottom-left coordinate system"
         $ forM_
-          [ (Input.Down, Position 2 1),
-            (Input.Left, Position 1 2),
-            (Input.Right, Position 3 2),
-            (Input.Up, Position 2 3)
+          [ (Input.Down, South, Position 2 1),
+            (Input.Left, West, Position 1 2),
+            (Input.Right, East, Position 3 2),
+            (Input.Up, North, Position 2 3)
           ]
-        $ \(input, destination) ->
+        $ \(input, direction, destination) ->
           assertBool "Expected the input to produce and apply a movement fact" $
-            Engine.step state input == (state{playerPosition = destination}, [Event.PlayerMoved destination]),
+            Engine.step state input == (state{playerDirection = direction, playerPosition = destination}, [Event.PlayerTurned direction | direction /= North] <> [Event.PlayerMoved destination]),
       testCase "Reject destinations outside the world or in missing cells" $ do
         forM_ [filledWorld [], filledWorld [[Ground]]] $ \layout ->
-          forM_ [Input.Down, Input.Left, Input.Right, Input.Up] $ \input ->
-            let current = GameState (Position 0 0) layout
+          forM_ [(Input.Down, South), (Input.Left, West), (Input.Right, East), (Input.Up, North)] $ \(input, direction) ->
+            let current = (gameState (Position 0 0) layout){playerDirection = direction}
              in assertBool "Expected no movement beyond the world" $
                   Engine.step current input == (current, [])
-        let ragged = GameState (Position 1 0) (filledWorld [[], [Ground, Ground]])
+        let ragged = gameState (Position 1 0) (filledWorld [[], [Ground, Ground]])
         assertBool "Expected a missing cell in a ragged row to block movement" $
           Engine.step ragged Input.Up == (ragged, [])
-        let hole = GameState (Position 1 0) (World [[Just Ground, Nothing, Just Ground], replicate 3 (Just Ground)])
+        let hole = gameState (Position 1 0) (World [[Just Ground, Nothing, Just Ground], replicate 3 (Just Ground)])
         assertBool "Expected a missing cell within a row to block movement" $
           Engine.step hole Input.Up == (hole, []),
       testCase "Reject ledges with blocked or missing landings" $ do
         forM_ (Nothing : map Just [Fence, Arena, House, Laboratory, Ledge South, Shop, Clinic, Rock, Sign, Tree, Wall, Water]) $ \landing ->
           let current =
-                GameState (Position 1 2) $
+                GameState Nothing Map.empty South (Position 1 2) $
                   World
                     [ replicate 3 (Just Ground),
                       [Just Ground, Just (Ledge South), Just Ground],
@@ -86,14 +176,14 @@ engineTests =
                     ]
            in assertBool "Expected no jump into a blocked tile or missing cell" $
                 Engine.step current Input.Down == (current, [])
-        let edge = GameState (Position 0 1) (filledWorld [[Ground], [Ledge South]])
+        let edge = (gameState (Position 0 1) (filledWorld [[Ground], [Ledge South]])){playerDirection = South}
         assertBool "Expected no jump beyond the world" $
           Engine.step edge Input.Down == (edge, []),
       testCase "Replay history reproduces sequential input processing" $
         let (finalState, history) = foldl advance (state, []) [Input.Up, Input.Right, Input.Down]
          in assertBool "Expected each input to use the latest state, with replayable facts" $
-              finalState == state{playerPosition = Position 3 2}
-                && history == map Event.PlayerMoved [Position 2 3, Position 3 3, Position 3 2]
+              finalState == state{playerDirection = South, playerPosition = Position 3 2}
+                && history == [Event.PlayerMoved (Position 2 3), Event.PlayerTurned East, Event.PlayerMoved (Position 3 3), Event.PlayerTurned South, Event.PlayerMoved (Position 3 2)]
                 && foldl Engine.applyEvent state history == finalState,
       testCase "Replay ledge crossings as absolute movement facts" $
         let current = withLedge South
@@ -116,10 +206,10 @@ engineTests =
     advance (current, history) input =
       let (next, events) = Engine.step current input
        in (next, history <> events)
-    state = GameState (Position 2 2) (filledWorld (replicate 5 (replicate 5 Ground)))
-    withDestination tile = GameState (Position 1 1) (filledWorld [[Ground, tile, Ground], replicate 3 Ground, replicate 3 Ground])
+    state = gameState (Position 2 2) (filledWorld (replicate 5 (replicate 5 Ground)))
+    withDestination tile = gameState (Position 1 1) (filledWorld [[Ground, tile, Ground], replicate 3 Ground, replicate 3 Ground])
     withLedge direction =
-      GameState (Position 2 3) $
+      GameState Nothing Map.empty direction (Position 2 3) $
         filledWorld
           [ replicate 5 Ground,
             replicate 5 Ground,
@@ -132,17 +222,37 @@ eventTests :: TestTree
 eventTests =
   testGroup
     "Event"
-    [ testCase "Load an independently written fixture"
+    [ testCase "Load conversation and turning facts"
+        $ forM_
+          [ ("{\"lineIndex\":1,\"type\":\"conversation-advanced\"}", Event.ConversationAdvanced 1),
+            ("{\"type\":\"conversation-ended\"}", Event.ConversationEnded),
+            ("{\"npcId\":\"guide\",\"type\":\"conversation-started\"}", Event.ConversationStarted (NpcId "guide")),
+            ("{\"direction\":\"west\",\"type\":\"player-turned\"}", Event.PlayerTurned West)
+          ]
+        $ \(encoded, expected) ->
+          assertBool "Expected independently specified facts and their JSON fields" $
+            Aeson.eitherDecode encoded == Right expected
+              && Aeson.eitherDecode encoded == Right (Aeson.toJSON expected),
+      testCase "Load an independently written fixture"
         $ assertBool "Expected the recorded destination"
         $ Aeson.eitherDecode fixture == Right event,
       testCase "Reject a missing position"
         $ assertBool "Expected a parse error"
         $ isLeft (Aeson.eitherDecode @Event.Event "{\"type\":\"player-moved\"}"),
+      testCase "Reject missing or invalid conversation and turning fields"
+        $ forM_
+          [ "{\"type\":\"conversation-advanced\"}",
+            "{\"type\":\"conversation-started\"}",
+            "{\"type\":\"player-turned\"}",
+            "{\"direction\":\"up\",\"type\":\"player-turned\"}"
+          ]
+        $ \invalid -> assertBool "Expected a parse error" (isLeft (Aeson.eitherDecode @Event.Event invalid)),
       testCase "Reject an unknown event type"
         $ assertBool "Expected a parse error"
         $ isLeft (Aeson.eitherDecode @Event.Event "{\"position\":{\"x\":2,\"y\":1},\"type\":\"walk\"}"),
-      testCase "Round trips" $
-        forM_ [Position (-1) 2, Position minBound maxBound] (assertRoundTrip . Event.PlayerMoved),
+      testCase "Round trips" $ do
+        forM_ [Position (-1) 2, Position minBound maxBound] (assertRoundTrip . Event.PlayerMoved)
+        forM_ [Event.ConversationAdvanced 1, Event.ConversationEnded, Event.ConversationStarted (NpcId "guide"), Event.PlayerTurned East, Event.PlayerTurned North, Event.PlayerTurned South, Event.PlayerTurned West] assertRoundTrip,
       testCase "Save the expected JSON structure"
         $ assertBool "Expected an event type and an absolute position"
         $ Aeson.eitherDecode fixture == Right (Aeson.toJSON event)
@@ -153,6 +263,9 @@ eventTests =
 
 filledWorld :: [[Tile]] -> World
 filledWorld = World . map (map Just)
+
+gameState :: Position -> World -> GameState
+gameState location layout = initialState{playerPosition = location, world = layout}
 
 inputTests :: TestTree
 inputTests =
@@ -171,6 +284,13 @@ inputTests =
 
 main :: IO ()
 main = defaultMain tests
+
+npcState :: GameState
+npcState =
+  (gameState (Position 1 1) (filledWorld (replicate 4 (replicate 4 Ground))))
+    { npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] (Position 2 1)),
+      playerDirection = East
+    }
 
 saveTests :: TestTree
 saveTests =
@@ -213,6 +333,19 @@ saveTests =
             assertBool "Expected writing to succeed" (written == Right ())
             assertBool "Expected the complete saved history" (loaded == Right savedEvents)
             assertBool "Expected replay to reproduce the resulting state" (fmap (Save.apply initialState) loaded == Right expectedState),
+      testCase "Round trip an interrupted conversation" $
+        withSaveFile $ \path -> do
+          let (opened, started) = Engine.step npcState Input.Enter
+              (active, advanced) = Engine.step opened Input.Enter
+              history = started <> advanced
+          written <- Save.save path history
+          loaded <- Save.load path
+          assertBool "Expected all conversation facts to survive JSON Lines and replay" $
+            written == Right ()
+              && loaded == Right history
+              && fmap (Save.apply npcState) loaded == Right active
+              && conversationText active == Just "Visit my lab."
+              && Engine.step active Input.Enter == (npcState, [Event.ConversationEnded]),
       testCase "Write independently decodable events on separate lines" $
         withSaveFile $ \path ->
           forM_ [history, []] $ \savedEvents -> do
@@ -288,13 +421,28 @@ stateTests =
           testCase "Load missing cells"
             $ assertBool "Expected JSON null to represent an absent cell"
             $ Aeson.eitherDecode @World "{\"tiles\":[[null,\"ground\",null]]}" == Right (World [[Nothing, Just Ground, Nothing]]),
+          testCase "Load NPCs and an active conversation" $
+            let encoded = "{\"conversation\":{\"lineIndex\":1,\"npcId\":\"guide\"},\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\",\"Visit my lab.\"],\"position\":{\"x\":1,\"y\":0}}},\"playerDirection\":\"east\",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"grass\"]]}}"
+                expected =
+                  (gameState (Position 0 0) (filledWorld [[Ground, Grass]]))
+                    { conversation = Just (Conversation 1 (NpcId "guide")),
+                      npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] (Position 1 0)),
+                      playerDirection = East
+                    }
+             in assertBool "Expected stable NPC object keys, facing, dialogue and progress" $
+                  Aeson.eitherDecode encoded == Right expected
+                    && Aeson.eitherDecode encoded == Right (Aeson.toJSON expected),
           testCase "Save the expected JSON structure"
             $ assertBool "Expected the fixture's JSON fields"
             $ Aeson.eitherDecode fixture == Right (Aeson.toJSON state)
         ],
       testGroup
         "Round trips"
-        [ testCase "GameState" $ assertRoundTrip initialState,
+        [ testCase "Conversation" $ forM_ [Conversation 0 (NpcId "guide"), Conversation 1 (NpcId "guide")] assertRoundTrip,
+          testCase "Direction" $ forM_ [East, North, South, West] assertRoundTrip,
+          testCase "GameState" $ forM_ [initialState, npcState, npcState{conversation = Just (Conversation 1 (NpcId "guide"))}] assertRoundTrip,
+          testCase "Npc" $ forM_ [Npc [] (Position 0 0), Npc ["Hello!", "Visit my lab."] (Position 2 1)] assertRoundTrip,
+          testCase "NpcId" $ forM_ [NpcId "guide", NpcId "博士"] assertRoundTrip,
           testCase "Position" $
             forM_ [Position 0 0, Position (-1) 2, Position minBound maxBound] assertRoundTrip,
           testCase "Tile" $
@@ -332,10 +480,10 @@ stateTests =
     fixture =
       "{\"playerPosition\":{\"x\":2,\"y\":1},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"wall\"],[\"water\",\"tall-grass\"]]}}"
     sampleWorld = filledWorld [[TallGrass, Wall], [Ground, Water]]
-    state = GameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
+    state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests]
+tests = testGroup "Critters" [conversationTests, engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests]
 
 tuiTests :: TestTree
 tuiTests =
@@ -351,37 +499,48 @@ tuiTests =
           ]
         $ \(position, destination) ->
           assertBool "Expected the player at the centered or clamped viewport position" $
-            tile (view (GameState position largeWorld)) destination == "🧑",
+            tile (view (gameState position largeWorld)) destination == "🧑",
       testCase "Draw one marker per building footprint" $
         forM_ [(Arena, "🥊"), (House, "🏠"), (Laboratory, "🔬"), (Shop, "🏪"), (Clinic, "🏥")] $ \(building, marker) ->
           let layout = filledWorld [[building, building], [building, Door]]
-              drawing = TUI.render (GameState (Position (-1) (-1)) layout)
+              drawing = TUI.render (gameState (Position (-1) (-1)) layout)
            in assertBool "Expected one building marker and its separate door" $
                 Text.count marker drawing == 1 && Text.count "🚪" drawing == 1,
+      testCase "Draw stationary NPCs over their terrain"
+        $ assertBool "Expected the NPC and player at their separate ground positions"
+        $ tile (view npcState) (2, 1) == "🧓"
+          && tile (view npcState) (1, 1) == "🧑",
       testCase "Empty and ragged worlds retain a fixed viewport" $
         forM_ [filledWorld [], filledWorld [[]], filledWorld [[Wall], [], [Ground, Water]]] $ \layout -> do
-          let rows = view (GameState (Position minBound maxBound) layout)
+          let rows = view (gameState (Position minBound maxBound) layout)
           assertBool "Expected the configured rows and one wide glyph per floor cell" $
             length rows == TUI.height && all ((== TUI.width) . Text.length) rows
           assertBool "Expected out-of-viewport players to be omitted" $
             all (not . Text.isInfixOf "🧑") rows,
       testCase "Movement appears above the old position when walking north" $
-        let state = GameState (Position 2 2) largeWorld
+        let state = gameState (Position 2 2) largeWorld
             (nextState, _) = Engine.step state Input.Up
          in assertBool "Expected the player one row higher, with the old terrain restored" $
               tile (view state) (2, 2) == "🧑"
                 && tile (view nextState) (2, 3) == "🧑"
                 && tile (view nextState) (2, 2) == "⬜",
       testCase "Render ledge directions" $
-        let rows = view (GameState (Position (-1) (-1)) (filledWorld [[Ledge East, Ledge North, Ledge South, Ledge West]]))
+        let rows = view (gameState (Position (-1) (-1)) (filledWorld [[Ledge East, Ledge North, Ledge South, Ledge West]]))
          in assertBool "Expected arrows showing the permitted crossing direction" $
               Text.take 4 (last rows) == "⏩🔺🔻⏪",
+      testCase "Render dialogue below the map" $
+        forM_ [(0, "Hello!"), (1, "Visit my lab.")] $ \(index, expected) ->
+          let active = npcState{conversation = Just (Conversation index (NpcId "guide"))}
+              drawing = view active
+           in assertBool "Expected the current line after an intact fixed-size map" $
+                take TUI.height drawing == view npcState
+                  && drop TUI.height drawing == ["", expected],
       testCase "Render missing cells as padding" $
-        let rows = view (GameState (Position (-1) (-1)) (World [[Nothing, Just Ground, Nothing]]))
+        let rows = view (gameState (Position (-1) (-1)) (World [[Nothing, Just Ground, Nothing]]))
          in assertBool "Expected missing cells on either side of real terrain to remain blank" $
               Text.take 3 (last rows) == "\x3000⬜\x3000",
       testCase "Render tiles north-up with the player over the terrain" $
-        let rows = view (GameState (Position 0 0) (filledWorld [[TallGrass, Wall, Ground], [Ground, Water, Wall]]))
+        let rows = view (gameState (Position 0 0) (filledWorld [[TallGrass, Wall, Ground], [Ground, Water, Wall]]))
          in assertBool "Expected all tile glyphs, padding, and the player at the bottom-left" $
               Text.take 3 (rows !! (TUI.height - 2)) == "🌿🧱⬜"
                 && Text.take 3 (rows !! (TUI.height - 1)) == "🧑🌊🧱"

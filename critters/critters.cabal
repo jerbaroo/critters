@@ -83,7 +83,10 @@ library
         Critters.Run
         Critters.Save
         Critters.State
+        Critters.State.Conversation
         Critters.State.GameState
+        Critters.State.Npc
+        Critters.State.NpcId
         Critters.State.Position
         Critters.State.Tile
         Critters.State.World
@@ -97,9 +100,11 @@ library
         autodocodec,
         base,
         bytestring,
+        containers,
         directory,
         optparse-applicative,
         text,
+        unordered-containers,
         witch
 
     -- Directories containing source files.
@@ -152,6 +157,7 @@ test-suite critters-test
     build-depends:
         aeson,
         base,
+        containers,
         critters,
         directory,
         tasty,

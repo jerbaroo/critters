@@ -1,23 +1,58 @@
 module Critters.Event (Event (..)) where
 
-import Autodocodec (Autodocodec (..), HasCodec)
+import Autodocodec (Autodocodec (..), HasCodec, JSONObjectCodec)
 import Autodocodec qualified as Codec
+import Critters.Input.Direction (Direction)
 import Critters.Pretty (Pretty (..))
+import Critters.State.NpcId (NpcId)
 import Critters.State.Position (Position)
 import Data.Aeson qualified as Aeson
+import Data.HashMap.Strict qualified as HashMap
+import Data.Text.Lazy.Builder (toLazyText)
+import Data.Text.Lazy.Builder.Int (decimal)
+import Witch (from)
 
 -- | An established fact. Validation happens before an event is produced.
 data Event
-  = PlayerMoved{position :: Position}
+  = ConversationAdvanced Int
+  | ConversationEnded
+  | ConversationStarted NpcId
+  | PlayerMoved Position
+  | PlayerTurned Direction
   deriving stock (Eq)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Event)
 
 instance HasCodec Event where
   codec =
-    Codec.object "Event" $
-      PlayerMoved
-        <$> Codec.requiredField "position" "The player's position after moving." Codec..= position
-        <* Codec.requiredFieldWith "type" (Codec.literalTextCodec "player-moved") "The event type." Codec..= const "player-moved"
+    Codec.object "Event"
+      $ Codec.discriminatedUnionCodec "type" encode
+      $ HashMap.fromList
+        [ ("conversation-advanced", ("ConversationAdvanced", Codec.mapToDecoder ConversationAdvanced advanced)),
+          ("conversation-ended", ("ConversationEnded", pure ConversationEnded)),
+          ("conversation-started", ("ConversationStarted", Codec.mapToDecoder ConversationStarted started)),
+          ("player-moved", ("PlayerMoved", Codec.mapToDecoder PlayerMoved moved)),
+          ("player-turned", ("PlayerTurned", Codec.mapToDecoder PlayerTurned turned))
+        ]
+    where
+      advanced :: JSONObjectCodec Int
+      advanced = Codec.requiredField "lineIndex" "The new dialogue line index."
+      encode = \case
+        ConversationAdvanced index -> ("conversation-advanced", Codec.mapToEncoder index advanced)
+        ConversationEnded -> ("conversation-ended", pure ())
+        ConversationStarted identifier -> ("conversation-started", Codec.mapToEncoder identifier started)
+        PlayerMoved destination -> ("player-moved", Codec.mapToEncoder destination moved)
+        PlayerTurned direction -> ("player-turned", Codec.mapToEncoder direction turned)
+      moved :: JSONObjectCodec Position
+      moved = Codec.requiredField "position" "The player's position after moving."
+      started :: JSONObjectCodec NpcId
+      started = Codec.requiredField "npcId" "The NPC whose conversation started."
+      turned :: JSONObjectCodec Direction
+      turned = Codec.requiredField "direction" "The direction the player now faces."
 
 instance Pretty Event where
-  pretty (PlayerMoved destination) = "PlayerMoved " <> pretty destination
+  pretty = \case
+    ConversationAdvanced index -> from $ toLazyText $ "ConversationAdvanced " <> decimal index
+    ConversationEnded -> "ConversationEnded"
+    ConversationStarted identifier -> "ConversationStarted " <> pretty identifier
+    PlayerMoved destination -> "PlayerMoved " <> pretty destination
+    PlayerTurned direction -> "PlayerTurned " <> pretty direction

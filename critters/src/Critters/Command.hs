@@ -4,9 +4,11 @@ import Critters.Input.Direction (Direction (..))
 import Critters.Pretty (Pretty (..))
 
 data Command
-  = AdvanceDialogue
+  = AdvanceConversation
   | CloseMenu
   | ConfirmSelection
+  | EndConversation
+  | Interact
   | Quit
   | SelectNext
   | SelectPrevious
@@ -15,9 +17,11 @@ data Command
 
 instance Pretty Command where
   pretty = \case
-    AdvanceDialogue -> "AdvanceDialogue"
+    AdvanceConversation -> "AdvanceConversation"
     CloseMenu -> "CloseMenu"
     ConfirmSelection -> "ConfirmSelection"
+    EndConversation -> "EndConversation"
+    Interact -> "Interact"
     Quit -> "Quit"
     SelectNext -> "SelectNext"
     SelectPrevious -> "SelectPrevious"

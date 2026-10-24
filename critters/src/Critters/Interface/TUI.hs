@@ -3,10 +3,11 @@ module Critters.Interface.TUI (height, input, output, render, width, writeLog) w
 import Critters.Input (Input)
 import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI.Keyboard qualified as Keyboard
-import Critters.State.GameState (GameState (..))
+import Critters.State.GameState (GameState (..), conversationText, npcAt)
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
 import Critters.State.World (World (..), tileAt)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
@@ -32,7 +33,7 @@ output state = do
 
 -- | A fixed viewport with north at the top, padded outside the world.
 render :: GameState -> Text
-render state = Text.unlines rows
+render state = Text.unlines (rows <> maybe [] (\line -> ["", line]) (conversationText state))
   where
     building tile marker roof position
       | tileAt (world state) position{x = x position - 1} /= Just tile
@@ -41,6 +42,7 @@ render state = Text.unlines rows
       | otherwise = roof
     cell position
       | position == playerPosition state = "🧑"
+      | isJust (npcAt state position) = "🧓"
       | otherwise = case tileAt (world state) position of
           Just Door -> "🚪"
           Just Fence -> "🪵"
