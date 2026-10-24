@@ -66,6 +66,9 @@ library
     -- Modules exported by the library.
     exposed-modules:
         Critters.CLI
+        Critters.Command
+        Critters.Input
+        Critters.Input.Direction
         Critters.State
         Critters.State.GameState
         Critters.State.Position
