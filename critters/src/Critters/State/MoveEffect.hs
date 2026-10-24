@@ -23,7 +23,7 @@ data Target = Opponent | Self
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Target)
 
 instance HasCodec MoveEffect where
-  codec = Codec.object "MoveEffect" $ Codec.discriminatedUnionCodec "type" encode $ HashMap.fromList
+  codec = Codec.named "MoveEffect" $ Codec.object "MoveEffect" $ Codec.discriminatedUnionCodec "type" encode $ HashMap.fromList
     [ ("chance", ("Chance", Codec.mapToDecoder (uncurry Chance) chance)),
       ("change-health", ("ChangeHealth", Codec.mapToDecoder (uncurry ChangeHealth) health)),
       ("change-stage", ("ChangeStage", Codec.mapToDecoder (\(destination, stat, amount) -> ChangeStage destination stat amount) stage)),

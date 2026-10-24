@@ -1,5 +1,7 @@
 module BattleTests (fixture, start, tests) where
 
+import Autodocodec.Yaml qualified as Schema
+import Control.Exception (evaluate)
 import Critters.Battle.Action (Action (..))
 import Critters.Battle.Engine qualified as BattleEngine
 import Critters.Battle.Turn qualified as Turn
@@ -40,6 +42,7 @@ import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
+import System.Timeout (timeout)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
@@ -252,7 +255,10 @@ tests :: TestTree
 tests = testGroup "Battle"
   [ encounterTests, itemTests, lifecycleTests, opponentTests, profileTests, progressionTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
     testGroup "Rules"
-      [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
+      [ testCase "Render finite documentation for recursive move effects" $ do
+          size <- timeout 5000000 (evaluate (Text.length (Schema.renderPlainSchemaViaCodec @GameState)))
+          assertBool "Expected the complete game schema to render" (maybe False (> 0) size),
+        testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)
           assertBool "Expected lazy conditionals and comparisons" (Formula.evaluate Map.empty (Formula "if(2 >= 1, 2^3 + ceil(1.2), 1/0)") == Right 10)
           assertBool "Expected exponentiation before negation" (Formula.evaluate Map.empty (Formula "-2^2 + 2^-2 + 2^3^2") == Right 508.25)

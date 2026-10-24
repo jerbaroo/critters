@@ -208,6 +208,7 @@ test-suite critters-test
     -- Test dependencies.
     build-depends:
         aeson,
+        autodocodec-yaml,
         base,
         containers,
         critters,
