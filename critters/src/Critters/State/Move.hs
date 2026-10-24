@@ -1,0 +1,52 @@
+module Critters.State.Move (defaultMove, Move (..)) where
+
+import Autodocodec (Autodocodec (..), HasCodec)
+import Autodocodec qualified as Codec
+import Critters.Codec qualified as NumberCodec
+import Critters.State.MoveEffect (MoveEffect)
+import Data.Aeson qualified as Aeson
+import Data.Text (Text)
+import Data.Text qualified as Text
+
+defaultMove :: Move
+defaultMove = Move 1 "neutral" "attack" 0 "defense" [] 1 0 1 "Basic strike" 20 0
+
+data Move = Move
+  { moveAccuracy :: Double,
+    moveAffinity :: Text,
+    moveAttackStat :: Text,
+    moveCriticalRate :: Double,
+    moveDefenseStat :: Text,
+    moveEffects :: [MoveEffect],
+    moveMaxHits :: Int,
+    moveMaxUses :: Int,
+    moveMinHits :: Int,
+    moveName :: Text,
+    movePower :: Int,
+    movePriority :: Int
+  }
+  deriving stock (Eq)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Move)
+
+instance HasCodec Move where
+  codec = Codec.bimapCodec validate id $ Codec.object "Move" $ Move
+    <$> Codec.optionalFieldWithOmittedDefaultWith "accuracy" NumberCodec.probabilityCodec 1 "Hit probability before game rules." Codec..= moveAccuracy
+    <*> Codec.optionalFieldWithOmittedDefault "affinity" "neutral" "Game-defined affinity." Codec..= moveAffinity
+    <*> Codec.optionalFieldWithOmittedDefault "attackStat" "attack" "Offensive stat identifier." Codec..= moveAttackStat
+    <*> Codec.optionalFieldWithOmittedDefaultWith "criticalRate" NumberCodec.probabilityCodec 0 "Critical probability before game rules." Codec..= moveCriticalRate
+    <*> Codec.optionalFieldWithOmittedDefault "defenseStat" "defense" "Defensive stat identifier." Codec..= moveDefenseStat
+    <*> Codec.optionalFieldWithOmittedDefault "effects" [] "Additional move effects." Codec..= moveEffects
+    <*> Codec.optionalFieldWithOmittedDefault "maxHits" 1 "Maximum hits." Codec..= moveMaxHits
+    <*> Codec.optionalFieldWithOmittedDefault "maxUses" 0 "Uses per full recovery; zero means unlimited." Codec..= moveMaxUses
+    <*> Codec.optionalFieldWithOmittedDefault "minHits" 1 "Minimum hits." Codec..= moveMinHits
+    <*> Codec.requiredField "name" "Display name." Codec..= moveName
+    <*> Codec.optionalFieldWithOmittedDefault "power" 0 "Nonnegative base power." Codec..= movePower
+    <*> Codec.optionalFieldWithOmittedDefault "priority" 0 "Higher values act first." Codec..= movePriority
+    where
+      validate value
+        | moveAccuracy value < 0 || moveAccuracy value > 1 = Left "Move accuracy must be between zero and one."
+        | moveCriticalRate value < 0 || moveCriticalRate value > 1 = Left "Critical rate must be between zero and one."
+        | moveMinHits value < 1 || moveMaxHits value < moveMinHits value || moveMaxHits value > 100 = Left "Hit counts must satisfy 1 <= minHits <= maxHits <= 100."
+        | moveMaxUses value < 0 || movePower value < 0 = Left "Move power and uses must not be negative."
+        | any (Text.null . Text.strip) [moveName value, moveAffinity value, moveAttackStat value, moveDefenseStat value] = Left "Move names and identifiers must not be blank."
+        | otherwise = Right value

@@ -69,9 +69,11 @@ library
     exposed-modules:
         Critters.CLI
         Critters.CLI.Options
+        Critters.Codec
         Critters.Command
         Critters.Engine
         Critters.Event
+        Critters.Formula
         Critters.Input
         Critters.Input.Direction
         Critters.Interface
@@ -95,6 +97,9 @@ library
         Critters.State.Interaction
         Critters.State.Location
         Critters.State.MapId
+        Critters.State.Move
+        Critters.State.MoveEffect
+        Critters.State.MoveId
         Critters.State.Npc
         Critters.State.NpcId
         Critters.State.Object
@@ -157,7 +162,9 @@ test-suite critters-test
     import:           settings
 
     -- Modules included in this executable, other than Main.
-    other-modules: InteractionTests
+    other-modules:
+        BattleTests
+        InteractionTests
 
     -- The interface type and version of the test suite.
     type:             exitcode-stdio-1.0
