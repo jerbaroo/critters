@@ -1,17 +1,26 @@
 -- | Pure pipeline from Input -> Command -> Event -> State.
-module Critters.Engine (applyEvent, commandFor, eventsFor, step) where
+module Critters.Engine (applyEvent, chooseInteraction, commandFor, conditionHolds, eventsFor, eventsForEffects, step) where
 
+import Control.Monad (foldM)
 import Critters.Command (Command (..))
 import Critters.Event (Event)
 import Critters.Event qualified as Event
 import Critters.Input (Input)
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
+import Critters.State.ActiveInteraction (ActiveInteraction (..))
+import Critters.State.Choice qualified as Choice
+import Critters.State.Condition (Condition (..))
 import Critters.State.Conversation (Conversation (..))
+import Critters.State.Effect (Effect)
+import Critters.State.Effect qualified as Effect
 import Critters.State.GameState (GameState (..), world)
 import Critters.State.GameState qualified as GameState
+import Critters.State.Interaction (Interaction (..))
 import Critters.State.Location qualified as Location
 import Critters.State.Npc qualified as Npc
+import Critters.State.Object qualified as Object
+import Critters.State.Party (Party (..))
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
 import Critters.State.Warp qualified as Warp
@@ -19,6 +28,21 @@ import Critters.State.World (World (..), tileAt)
 import Data.List (find)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
+import Data.Text (Text)
+
+advanceInteraction :: GameState -> ActiveInteraction -> [Event]
+advanceInteraction state active
+  | isJust (activeSelectedChoice active) = []
+  | index < 0 || index >= length dialogue = [Event.InteractionEnded]
+  | index < length dialogue - 1 =
+      [Event.InteractionAdvanced (index + 1)]
+        <> [Event.InteractionChoiceOpened | index + 1 == length dialogue - 1 && not (null choices)]
+  | not (null choices) = [Event.InteractionChoiceOpened]
+  | otherwise = completeInteraction state active []
+  where
+    choices = interactionChoices (activeScript active)
+    dialogue = interactionDialogue (activeScript active)
+    index = activeDialogueIndex active
 
 -- | Apply an established fact without checking command rules again.
 applyEvent :: GameState -> Event -> GameState
@@ -26,6 +50,14 @@ applyEvent state = \case
   Event.ConversationAdvanced index -> state{conversation = fmap (\active -> active{lineIndex = index}) (conversation state)}
   Event.ConversationEnded -> state{conversation = Nothing}
   Event.ConversationStarted identifier -> state{conversation = Just (Conversation 0 identifier)}
+  Event.CritterReceived critter -> state{party = Party (members (party state) <> [critter])}
+  Event.FlagChanged identifier value -> state{flags = Map.insert identifier value (flags state)}
+  Event.InteractionAdvanced index -> state{activeInteraction = fmap (\active -> active{activeDialogueIndex = index}) (activeInteraction state)}
+  Event.InteractionChoiceOpened -> state{activeInteraction = fmap (\active -> active{activeSelectedChoice = Just 0}) (activeInteraction state)}
+  Event.InteractionChoiceSelected index -> state{activeInteraction = fmap (\active -> active{activeSelectedChoice = Just index}) (activeInteraction state)}
+  Event.InteractionEnded -> state{activeInteraction = Nothing}
+  Event.InteractionStarted active -> state{activeInteraction = Just active}
+  Event.ObjectRemoved identifier -> state{objects = Map.delete identifier (objects state)}
   Event.PartyClosed -> state{partyOpen = False}
   Event.PartyOpened -> state{partyOpen = True}
   Event.PlayerMoved destination -> state{playerPosition = destination}
@@ -36,7 +68,11 @@ applyEvent state = \case
 canStand :: GameState -> Position -> Bool
 canStand state destination =
   maybe False walkable (tileAt (world state) destination)
-    && isNothing (GameState.npcAt state destination)
+    && not (occupied state destination)
+
+-- | Select the first branch whose conditions all hold in the current state.
+chooseInteraction :: GameState -> [Interaction] -> Maybe Interaction
+chooseInteraction state = find (all (conditionHolds state) . interactionConditions)
 
 -- | The active view determines what Enter, Escape and movement mean.
 commandFor :: GameState -> Input -> Maybe Command
@@ -46,6 +82,19 @@ commandFor state input
       Input.Character 'p' -> Just CloseMenu
       Input.Escape -> Just CloseMenu
       _ -> Nothing
+  | Just active <- activeInteraction state = case activeSelectedChoice active of
+      Just _ -> case input of
+        Input.Character 'j' -> Just SelectNext
+        Input.Character 'k' -> Just SelectPrevious
+        Input.Down -> Just SelectNext
+        Input.Enter -> Just ConfirmSelection
+        Input.Escape -> Just CloseMenu
+        Input.Up -> Just SelectPrevious
+        _ -> Nothing
+      Nothing -> case input of
+        Input.Enter -> Just AdvanceConversation
+        Input.Escape -> Just EndConversation
+        _ -> Nothing
   | otherwise = case (conversation state, input) of
       (Just _, Input.Enter) -> Just AdvanceConversation
       (Just _, Input.Escape) -> Just EndConversation
@@ -63,11 +112,22 @@ commandFor state input
       (Nothing, Input.Up) -> Just (Walk North)
       _ -> Nothing
 
+completeInteraction :: GameState -> ActiveInteraction -> [Effect] -> [Event]
+completeInteraction state active extra =
+  case eventsForEffects state (interactionEffects (activeScript active) <> extra) of
+    Left message -> startInteraction state (Interaction [] [] [message] [])
+    Right events -> events <> [Event.InteractionEnded]
+
+-- | Conditions inspect current state; a missing flag has the value false.
+conditionHolds :: GameState -> Condition -> Bool
+conditionHolds state (Flag identifier expected) = Map.findWithDefault False identifier (flags state) == expected
+
 -- | Only valid destinations produce movement facts. Ledges are crossed in one
 -- input, landing one cell beyond them in their allowed direction.
 eventsFor :: GameState -> Command -> [Event]
 eventsFor state command
   | partyOpen state = [Event.PartyClosed | command == CloseMenu]
+  | Just active <- activeInteraction state = interactionEvents state active command
   | otherwise = case command of
       AdvanceConversation -> case conversation state of
         Just active -> case Map.lookup (npcId active) (npcs state) of
@@ -79,10 +139,7 @@ eventsFor state command
           _ -> [Event.ConversationEnded]
         Nothing -> []
       EndConversation -> [Event.ConversationEnded | isJust (conversation state)]
-      Interact | isNothing (conversation state) ->
-        case GameState.npcAt state (move (playerDirection state) (playerPosition state)) of
-          Just (identifier, npc) | not (null (Npc.dialogue npc)) -> [Event.ConversationStarted identifier]
-          _ -> []
+      Interact | isNothing (conversation state) -> interactEvents state
       OpenParty | isNothing (conversation state) -> [Event.PartyOpened]
       Walk direction
         | isNothing (conversation state) ->
@@ -92,8 +149,50 @@ eventsFor state command
                   _ -> adjacent
                 turns = [Event.PlayerTurned direction | direction /= playerDirection state]
              in turns
-                  <> if isNothing (GameState.npcAt state adjacent) then movementEvents state direction destination else []
+                  <> if not (occupied state adjacent) then movementEvents state direction destination else []
       _ -> []
+
+-- | Validate the entire batch against a temporary state before returning facts.
+-- A later failure discards every earlier effect in the batch.
+eventsForEffects :: GameState -> [Effect] -> Either Text [Event]
+eventsForEffects state = fmap snd . foldM apply (state, [])
+  where
+    apply (current, events) effect = do
+      event <- case effect of
+        Effect.GiveCritter critter
+          | length (members (party current)) < maxPartySize current -> Right (Event.CritterReceived critter)
+          | otherwise -> Left "Your party is full."
+        Effect.RemoveObject identifier
+          | Map.member identifier (objects current) -> Right (Event.ObjectRemoved identifier)
+          | otherwise -> Left "That object is no longer available."
+        Effect.SetFlag identifier value -> Right (Event.FlagChanged identifier value)
+      pure (applyEvent current event, events <> [event])
+
+interactEvents :: GameState -> [Event]
+interactEvents state = case GameState.npcAt state facing of
+  Just (identifier, npc)
+    | not (null (Npc.interactions npc)) -> maybe [] (startInteraction state) (chooseInteraction state (Npc.interactions npc))
+    | not (null (Npc.dialogue npc)) -> [Event.ConversationStarted identifier]
+    | otherwise -> []
+  Nothing -> case GameState.objectAt state facing of
+    Just (_, object) -> maybe [] (startInteraction state) (chooseInteraction state (Object.objectInteractions object))
+    Nothing -> []
+  where
+    facing = move (playerDirection state) (playerPosition state)
+
+interactionEvents :: GameState -> ActiveInteraction -> Command -> [Event]
+interactionEvents state active = \case
+  AdvanceConversation -> advanceInteraction state active
+  CloseMenu -> [Event.InteractionEnded]
+  ConfirmSelection -> case activeSelectedChoice active of
+    Just index | index >= 0 -> case drop index (interactionChoices (activeScript active)) of
+      choice : _ -> completeInteraction state active (Choice.choiceEffects choice)
+      [] -> []
+    _ -> []
+  EndConversation -> [Event.InteractionEnded]
+  SelectNext -> selectChoice 1 active
+  SelectPrevious -> selectChoice (-1) active
+  _ -> []
 
 move :: Direction -> Position -> Position
 move direction (Position column row) = case direction of
@@ -116,6 +215,30 @@ movementEvents state direction destination
                   then [Event.PlayerMoved destination, Event.PlayerWarped target]
                   else []
       _ -> []
+
+occupied :: GameState -> Position -> Bool
+occupied state position = isJust (GameState.npcAt state position) || isJust (GameState.objectAt state position)
+
+selectChoice :: Int -> ActiveInteraction -> [Event]
+selectChoice delta active = case activeSelectedChoice active of
+  Just index
+    | index >= 0 && index < count ->
+        let next = max 0 (min (count - 1) (index + delta))
+         in [Event.InteractionChoiceSelected next | next /= index]
+  _ -> []
+  where
+    count = length (interactionChoices (activeScript active))
+
+startInteraction :: GameState -> Interaction -> [Event]
+startInteraction state script
+  | null (interactionDialogue script) && null (interactionChoices script) =
+      case eventsForEffects state (interactionEffects script) of
+        Left message -> startInteraction state (Interaction [] [] [message] [])
+        Right events -> events
+  | otherwise =
+      [ Event.InteractionStarted
+          (ActiveInteraction 0 script (if length (interactionDialogue script) <= 1 && not (null (interactionChoices script)) then Just 0 else Nothing))
+      ]
 
 -- | Interpret an input and return the resulting state and recorded facts.
 step :: GameState -> Input -> (GameState, [Event])

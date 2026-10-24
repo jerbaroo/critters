@@ -1,12 +1,17 @@
 module Critters.Interface.TUI (height, input, output, redraw, render, renderFrame, width, writeLog) where
 
+import Control.Applicative ((<|>))
 import Critters.Input (Input)
 import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Interface.TUI.Keyboard qualified as Keyboard
+import Critters.State.ActiveInteraction (ActiveInteraction (..))
+import Critters.State.Choice qualified as Choice
 import Critters.State.Critter qualified as Critter
-import Critters.State.GameState (GameState (..), conversationText, npcAt, world)
+import Critters.State.GameState (GameState (..), conversationText, interactionText, npcAt, objectAt, world)
+import Critters.State.Interaction qualified as Interaction
+import Critters.State.Object qualified as Object
 import Critters.State.Party qualified as Party
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
@@ -63,6 +68,19 @@ redraw previous rows =
 render :: GameState -> Text
 render = Text.intercalate "\n" . map renderRow . renderFrame
 
+renderChoices :: ActiveInteraction -> [[Cell]]
+renderChoices active =
+  renderText (height - 1) (Text.intercalate "\n" (question : "" : entries))
+    <> renderText 1 "↑/↓ or j/k: Select  Enter: Confirm  Esc: Cancel"
+  where
+    entries =
+      [ (if activeSelectedChoice active == Just index then "> " else "  ") <> Choice.choiceLabel choice
+      | (index, choice) <- zip [0 ..] (Interaction.interactionChoices (activeScript active))
+      ]
+    question = case drop (activeDialogueIndex active) (Interaction.interactionDialogue (activeScript active)) of
+      line : _ | activeDialogueIndex active >= 0 -> line
+      _ -> "Choose:"
+
 -- | Two padded text rows, clipped to the viewport's column width.
 renderConversation :: Text -> [[Cell]]
 renderConversation = renderText 2
@@ -72,7 +90,8 @@ renderConversation = renderText 2
 renderFrame :: GameState -> [[Cell]]
 renderFrame state
   | partyOpen state = renderParty state
-  | otherwise = case conversationText state of
+  | Just active <- activeInteraction state, isJust (activeSelectedChoice active) = renderChoices active
+  | otherwise = case interactionText state <|> conversationText state of
       Just message -> take (height - 2) rows <> renderConversation message
       Nothing -> rows
   where
@@ -85,6 +104,7 @@ renderFrame state
     marker position
       | position == playerPosition state = "🧑"
       | isJust (npcAt state position) = "🧓"
+      | Just (_, object) <- objectAt state position = Object.objectGlyph object
       | otherwise = case tileAt (world state) position of
           Just Door -> "🚪"
           Just Fence -> "🪵"

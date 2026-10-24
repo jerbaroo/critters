@@ -84,13 +84,21 @@ library
         Critters.Run
         Critters.Save
         Critters.State
+        Critters.State.ActiveInteraction
+        Critters.State.Choice
+        Critters.State.Condition
         Critters.State.Conversation
         Critters.State.Critter
+        Critters.State.Effect
+        Critters.State.FlagId
         Critters.State.GameState
+        Critters.State.Interaction
         Critters.State.Location
         Critters.State.MapId
         Critters.State.Npc
         Critters.State.NpcId
+        Critters.State.Object
+        Critters.State.ObjectId
         Critters.State.Party
         Critters.State.Position
         Critters.State.Tile
@@ -149,7 +157,7 @@ test-suite critters-test
     import:           settings
 
     -- Modules included in this executable, other than Main.
-    -- other-modules:
+    other-modules: InteractionTests
 
     -- The interface type and version of the test suite.
     type:             exitcode-stdio-1.0

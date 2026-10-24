@@ -11,13 +11,14 @@ import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Save qualified as Save
-import Critters.State (Conversation (..), Critter (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
+import Critters.State (Condition (..), Conversation (..), Critter (..), FlagId (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as TextEncoding
 import Data.Text.IO qualified as TextIO
+import InteractionTests qualified as InteractionTests
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (hClose, openTempFile)
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -27,6 +28,65 @@ assertRoundTrip :: (Eq a, Aeson.FromJSON a, Aeson.ToJSON a) => a -> Assertion
 assertRoundTrip value =
   assertBool "JSON should preserve the value" $
     Aeson.eitherDecode (Aeson.encode value) == Right value
+
+conditionTests :: TestTree
+conditionTests =
+  testGroup
+    "Condition"
+    [ testCase "Evaluate present and missing flags" $ do
+        forM_ [Map.empty, Map.singleton (FlagId "other") True, Map.singleton identifier False] $ \storyFlags ->
+          let state = initialState{flags = storyFlags}
+           in assertBool "Expected missing and explicitly false flags to match false, regardless of unrelated flags" $
+                Engine.conditionHolds state (Flag identifier False)
+                  && not (Engine.conditionHolds state (Flag identifier True))
+        let state = initialState{flags = Map.singleton identifier True}
+        assertBool "Expected a true flag to match only true" $
+          Engine.conditionHolds state (Flag identifier True)
+            && not (Engine.conditionHolds state (Flag identifier False)),
+      testCase "Load and encode independently written flag conditions"
+        $ forM_
+          [ ("{\"type\":\"flag\",\"flag\":\"guide.offer-made\",\"value\":false}", Flag identifier False),
+            ("{\"type\":\"flag\",\"flag\":\"guide.offer-made\",\"value\":true}", Flag identifier True)
+          ]
+        $ \(encoded, expected) ->
+          assertBool "Expected the flag discriminator, identifier and boolean value" $
+            Aeson.eitherDecode encoded == Right expected
+              && Aeson.eitherDecode encoded == Right (Aeson.toJSON expected),
+      testCase "Load story flags and defaults in current and legacy game files" $
+        forM_ ["\"maps\":{\"overworld\":{\"tiles\":[]}}", "\"world\":{\"tiles\":[]}"] $ \layout ->
+          forM_
+            [ ("", Map.empty),
+              (",\"flags\":{\"guide.offer-made\":true,\"lab.critter-claimed\":false}", Map.fromList [(identifier, True), (FlagId "lab.critter-claimed", False)])
+            ]
+            $ \(fields, expected) ->
+              let encoded = "{" <> layout <> fields <> ",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
+               in assertBool "Expected flag object keys and values to survive loading, with an empty default" $
+                    fmap flags (Aeson.eitherDecode @GameState encoded) == Right expected,
+      testCase "Reject incomplete or invalid flag conditions"
+        $ forM_
+          [ "{\"flag\":\"guide.offer-made\",\"value\":true}",
+            "{\"type\":\"flag-is\",\"flag\":\"guide.offer-made\",\"value\":true}",
+            "{\"type\":\"flag\",\"value\":true}",
+            "{\"type\":\"flag\",\"flag\":\"guide.offer-made\"}",
+            "{\"type\":\"flag\",\"flag\":1,\"value\":true}",
+            "{\"type\":\"flag\",\"flag\":\"guide.offer-made\",\"value\":\"true\"}",
+            "{\"type\":\"flag\",\"flag\":\"guide.offer-made\",\"value\":null}"
+          ]
+        $ \invalid -> assertBool "Expected a flag identifier and explicit boolean value with type flag" (isLeft (Aeson.eitherDecode @Condition invalid)),
+      testCase "Reject invalid story flags" $
+        forM_ ["\"maps\":{\"overworld\":{\"tiles\":[]}}", "\"world\":{\"tiles\":[]}"] $ \layout ->
+          forM_ ["null", "[]", "{\"guide.offer-made\":1}", "{\"guide.offer-made\":\"true\"}"] $ \invalid ->
+            let encoded = "{" <> layout <> ",\"flags\":" <> invalid <> ",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
+             in assertBool "Expected flags to be an object of boolean values" (isLeft (Aeson.eitherDecode @GameState encoded)),
+      testCase "Round trip game-defined identifiers, conditions and story flags" $
+        forM_ [identifier, FlagId "門"] $ \name -> do
+          assertRoundTrip name
+          forM_ [False, True] $ \value -> do
+            assertRoundTrip (Flag name value)
+            assertRoundTrip initialState{flags = Map.singleton name value}
+    ]
+  where
+    identifier = FlagId "guide.offer-made"
 
 conversationTests :: TestTree
 conversationTests =
@@ -94,7 +154,7 @@ conversationTests =
            in assertBool "Expected interaction to require the adjacent cell in front" $
                 Engine.step current Input.Enter == (current, []),
       testCase "Ignore NPCs with no dialogue" $
-        let current = npcState{npcs = Map.singleton (NpcId "guide") (Npc [] (Location (MapId "overworld") (Position 2 1)))}
+        let current = npcState{npcs = Map.singleton (NpcId "guide") (Npc [] [] (Location (MapId "overworld") (Position 2 1)))}
          in assertBool "Expected an empty dialogue to produce no conversation" $
               Engine.step current Input.Enter == (current, []),
       testCase "Read missing or invalid conversation lines safely" $
@@ -353,7 +413,7 @@ main = defaultMain tests
 npcState :: GameState
 npcState =
   (gameState (Position 1 1) (filledWorld (replicate 4 (replicate 4 Ground))))
-    { npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] (Location (MapId "overworld") (Position 2 1))),
+    { npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 2 1))),
       playerDirection = East
     }
 
@@ -679,7 +739,7 @@ stateTests =
             $ Aeson.eitherDecode fixture == Right state,
           testCase "Load legacy single-map files" $
             let encoded = "{\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\"],\"position\":{\"x\":1,\"y\":0}}},\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"grass\"]]}}"
-                expected = (gameState (Position 0 0) (filledWorld [[Ground, Grass]])){npcs = Map.singleton (NpcId "guide") (Npc ["Hello!"] (Location (MapId "overworld") (Position 1 0)))}
+                expected = (gameState (Position 0 0) (filledWorld [[Ground, Grass]])){npcs = Map.singleton (NpcId "guide") (Npc ["Hello!"] [] (Location (MapId "overworld") (Position 1 0)))}
              in assertBool "Expected the old world and NPC positions to belong to the overworld" $
                   Aeson.eitherDecode encoded == Right expected,
           testCase "Load missing cells"
@@ -690,7 +750,7 @@ stateTests =
                 expected =
                   (gameState (Position 0 0) (filledWorld [[Ground, Grass]]))
                     { conversation = Just (Conversation 1 (NpcId "guide")),
-                      npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] (Location (MapId "overworld") (Position 1 0))),
+                      npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 1 0))),
                       playerDirection = East
                     }
              in assertBool "Expected stable NPC object keys, facing, dialogue and progress" $
@@ -707,7 +767,7 @@ stateTests =
           testCase "GameState" $ forM_ [initialState, npcState, npcState{conversation = Just (Conversation 1 (NpcId "guide"))}, warpState, fst (Engine.step warpState Input.Up)] assertRoundTrip,
           testCase "Location" $ forM_ [Location (MapId "overworld") (Position 1 2), Location (MapId "room") (Position 0 1)] assertRoundTrip,
           testCase "MapId" $ forM_ [MapId "overworld", MapId "room"] assertRoundTrip,
-          testCase "Npc" $ forM_ [Npc [] (Location (MapId "overworld") (Position 0 0)), Npc ["Hello!", "Visit my lab."] (Location (MapId "overworld") (Position 2 1))] assertRoundTrip,
+          testCase "Npc" $ forM_ [Npc [] [] (Location (MapId "overworld") (Position 0 0)), Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 2 1))] assertRoundTrip,
           testCase "NpcId" $ forM_ [NpcId "guide", NpcId "博士"] assertRoundTrip,
           testCase "Position" $
             forM_ [Position 0 0, Position (-1) 2, Position minBound maxBound] assertRoundTrip,
@@ -752,7 +812,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [conversationTests, critterTests, engineTests, eventTests, inputTests, partyRenderTests, partyTests, partyViewTests, saveTests, stateTests, tuiTests, warpTests]
+tests = testGroup "Critters" [conditionTests, conversationTests, critterTests, engineTests, eventTests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, saveTests, stateTests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =
@@ -926,7 +986,7 @@ warpTests =
                 Engine.step current Input.Up == (current, [])
         let absent = warpState{maps = Map.delete (MapId "room") (maps warpState)}
             outside = warpState{maps = Map.adjust (\layout -> layout{tiles = []}) (MapId "room") (maps warpState)}
-            occupied = warpState{npcs = Map.singleton (NpcId "inside") (Npc [] (Location (MapId "room") (Position 0 1)))}
+            occupied = warpState{npcs = Map.singleton (NpcId "inside") (Npc [] [] (Location (MapId "room") (Position 0 1)))}
         forM_ [absent, outside, occupied] $ \current ->
           assertBool "Expected missing maps, missing cells and NPCs to block arrival" $
             Engine.step current Input.Up == (current, []),
@@ -953,7 +1013,7 @@ warpTests =
                in assertBool "Expected stairs to admit only their configured movement direction" $
                     Engine.step current input == expected,
       testCase "Ignore NPCs in other maps" $
-        let current = warpState{npcs = Map.singleton (NpcId "outside") (Npc ["Hello!"] (Location (MapId "overworld") (Position 0 1)))}
+        let current = warpState{npcs = Map.singleton (NpcId "outside") (Npc ["Hello!"] [] (Location (MapId "overworld") (Position 0 1)))}
             (arrived, _) = Engine.step current Input.Up
          in assertBool "Expected unrelated NPCs neither to block arrival nor appear in the destination map" $
               playerMap arrived == MapId "room"
