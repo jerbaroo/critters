@@ -1,9 +1,9 @@
 module Main (main) where
 
 import Control.Monad (forM_)
+import Critters.State
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
-import State
 import Test.Tasty (defaultMain, testGroup, TestTree)
 import Test.Tasty.HUnit (assertBool, Assertion, testCase)
 

@@ -48,7 +48,6 @@ build-type:         Simple
 extra-doc-files:    CHANGELOG.md
 
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
--- extra-source-files:
 
 common settings
     default-extensions:
@@ -66,21 +65,22 @@ library
 
     -- Modules exported by the library.
     exposed-modules:
-        MyLib
-        State
-        State.GameState
-        State.Position
-        State.Tile
-        State.World
+        Critters.CLI
+        Critters.State
+        Critters.State.GameState
+        Critters.State.Position
+        Critters.State.Tile
+        Critters.State.World
 
     -- Modules included in this library but not exported.
     -- other-modules:
 
     -- Other library packages from which modules are imported.
     build-depends:
-        aeson >=2.0 && <3,
-        autodocodec >=0.5 && <1,
-        base ^>=4.20.2.0
+        aeson,
+        autodocodec,
+        base,
+        optparse-applicative
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -97,7 +97,7 @@ executable critters
 
     -- Other library packages from which modules are imported.
     build-depends:
-        base ^>=4.20.2.0,
+        base,
         critters
 
     -- Directories containing source files.
@@ -107,10 +107,10 @@ executable critters-docs
     import:           settings
     main-is:          Docs.hs
     build-depends:
-        autodocodec-yaml >=0.4 && <1,
-        base ^>=4.20.2.0,
+        autodocodec-yaml,
+        base,
         critters,
-        text >=2.0 && <3
+        text
     hs-source-dirs:   app
 test-suite critters-test
     -- Import common compiler settings.
@@ -130,8 +130,8 @@ test-suite critters-test
 
     -- Test dependencies.
     build-depends:
-        aeson >=2.0 && <3,
-        base ^>=4.20.2.0,
+        aeson,
+        base,
         critters,
-        tasty >=1.4 && <2,
-        tasty-hunit >=0.10 && <1
+        tasty,
+        tasty-hunit

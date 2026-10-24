@@ -2,7 +2,6 @@
 
 - Write the game in Haskell, keeping serializable state, the pure game engine,
   and rendering separate.
-- Put each state type in `State.<Type>`, with `State` re-exporting the modules.
 - Keep top-level definitions, record fields, and export lists alphabetical.
 - Set the language and all `default-extensions` in a shared Cabal common stanza
   imported by every component. All components must use the same language and
@@ -14,3 +13,5 @@
 - Define `HasCodec` instances and derive Aeson's `FromJSON` and `ToJSON` through
   `Autodocodec`.
 - Use Cabal to build and type-check, and `tasty` with `tasty-hunit` for tests.
+- Leave Cabal dependency versions unconstrained; use the Nix package set's
+  versions.

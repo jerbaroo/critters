@@ -1,10 +1,10 @@
-module State.World (tileAt, World (..)) where
+module Critters.State.World (tileAt, World (..)) where
 
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
+import Critters.State.Position (Position (..))
+import Critters.State.Tile (Tile)
 import Data.Aeson qualified as Aeson
-import State.Position (Position (..))
-import State.Tile (Tile)
 
 -- | Missing cells and negative coordinates return 'Nothing'.
 tileAt :: World -> Position -> Maybe Tile

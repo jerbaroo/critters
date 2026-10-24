@@ -1,4 +1,4 @@
-module State.Position (Position (..)) where
+module Critters.State.Position (Position (..)) where
 
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec

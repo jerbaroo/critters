@@ -1,4 +1,4 @@
-module State.Tile (Tile (..)) where
+module Critters.State.Tile (Tile (..)) where
 
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec

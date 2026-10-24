@@ -1,8 +1,6 @@
 module Main (main) where
 
-import MyLib qualified (someFunc)
+import Critters.CLI qualified as CLI
 
 main :: IO ()
-main = do
-  putStrLn "Hello, Haskell!"
-  MyLib.someFunc
+main = CLI.run

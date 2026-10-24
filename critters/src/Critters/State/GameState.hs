@@ -1,11 +1,11 @@
-module State.GameState (GameState (..), initialState) where
+module Critters.State.GameState (GameState (..), initialState) where
 
 import Autodocodec (Autodocodec (..), Codec (EqCodec), HasCodec, JSONCodec)
 import Autodocodec qualified as Codec
+import Critters.State.Position (Position (..))
+import Critters.State.Tile (Tile (..))
+import Critters.State.World (World (..))
 import Data.Aeson qualified as Aeson
-import State.Position (Position (..))
-import State.Tile (Tile (..))
-import State.World (World (..))
 
 data GameState = GameState
   { playerPosition :: Position
