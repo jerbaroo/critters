@@ -85,6 +85,7 @@ library
         Critters.Save
         Critters.State
         Critters.State.Conversation
+        Critters.State.Critter
         Critters.State.GameState
         Critters.State.Location
         Critters.State.MapId

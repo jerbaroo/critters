@@ -5,6 +5,11 @@
 - Present a concise plan to the user before implementation, using Haskell types
   and type signatures. Where appropriate, include a table mapping inputs to
   commands and events.
+- Divide work into small, sensible units for review. Keep each unit focused on
+  one coherent change with its relevant tests. Complete and check one unit,
+  then stop and wait for the user to stage it and ask to continue before
+  starting the next unit. Do not implement later units in the same handoff.
+  Leave staging and committing to the user.
 - Keep top-level definitions, record fields, and export lists alphabetical.
 - Set the language and all `default-extensions` in a shared Cabal common stanza
   imported by every component. All components must use the same language and

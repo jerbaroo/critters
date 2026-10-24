@@ -11,7 +11,7 @@ import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Save qualified as Save
-import Critters.State (Conversation (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
+import Critters.State (Conversation (..), Critter (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Position (..), Tile (..), Warp (..), World (..), conversationText, initialState, tileAt, world)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
@@ -115,6 +115,56 @@ conversationTests =
               Engine.step closed Input.Up
                 == (npcState{playerDirection = North, playerPosition = Position 1 2}, [Event.PlayerTurned North, Event.PlayerMoved (Position 1 2)])
     ]
+
+critterTests :: TestTree
+critterTests =
+  testGroup
+    "Critter"
+    [ testCase "Accept full, injured and fainted critters" $
+        forM_ [0, 1, 20] $
+          \current -> assertRoundTrip critter{hitPoints = current},
+      testCase "Load an independently written fixture"
+        $ assertBool "Expected the species, level and HP from the fixture"
+        $ Aeson.eitherDecode fixture == Right critter,
+      testCase "Reject HP outside the valid range" $
+        forM_ [-1, 21] $ \current ->
+          assertBool "Expected current HP outside zero to maximum HP to fail decoding" $
+            isLeft (Aeson.eitherDecode @Critter (Aeson.encode critter{hitPoints = current})),
+      testCase "Reject missing or wrongly typed fields"
+        $ forM_
+          [ "{\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"}",
+            "{\"hitPoints\":20,\"maxHitPoints\":20,\"species\":\"leafling\"}",
+            "{\"hitPoints\":20,\"level\":5,\"species\":\"leafling\"}",
+            "{\"hitPoints\":20,\"level\":5,\"maxHitPoints\":20}",
+            "{\"hitPoints\":1.5,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"}",
+            "{\"hitPoints\":20,\"level\":5,\"maxHitPoints\":20,\"species\":null}"
+          ]
+        $ \invalid -> assertBool "Expected a parse error" (isLeft (Aeson.eitherDecode @Critter invalid)),
+      testCase "Reject nonpositive levels" $
+        forM_ [-1, 0] $ \value ->
+          assertBool "Expected a positive level to be required" $
+            isLeft (Aeson.eitherDecode @Critter (Aeson.encode critter{level = value})),
+      testCase "Reject nonpositive maximum HP" $
+        forM_ [-1, 0] $ \value ->
+          assertBool "Expected positive maximum HP even for a fainted critter" $
+            isLeft (Aeson.eitherDecode @Critter (Aeson.encode critter{hitPoints = 0, maxHitPoints = value})),
+      testCase "Reject blank species identifiers" $
+        forM_ ["", " \t\n"] $ \identifier ->
+          assertBool "Expected a nonblank species identifier to be required" $
+            isLeft (Aeson.eitherDecode @Critter (Aeson.encode critter{species = identifier})),
+      testCase "Round trip author-defined species and numeric boundaries" $
+        forM_
+          [ Critter 0 1 1 "leafling",
+            Critter maxBound maxBound maxBound "葉っぱ"
+          ]
+          assertRoundTrip,
+      testCase "Save the expected JSON structure"
+        $ assertBool "Expected exactly the critter's four fields"
+        $ Aeson.eitherDecode fixture == Right (Aeson.toJSON critter)
+    ]
+  where
+    critter = Critter 20 5 20 "leafling"
+    fixture = "{\"hitPoints\":20,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"}"
 
 engineTests :: TestTree
 engineTests =
@@ -511,7 +561,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [conversationTests, engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests, warpTests]
+tests = testGroup "Critters" [conversationTests, critterTests, engineTests, eventTests, inputTests, saveTests, stateTests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =

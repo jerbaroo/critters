@@ -1,6 +1,7 @@
 -- | Serializable game data, independent of game rules and rendering.
 module Critters.State
   ( module Critters.State.Conversation,
+    module Critters.State.Critter,
     module Critters.State.GameState,
     module Critters.State.Location,
     module Critters.State.MapId,
@@ -14,6 +15,7 @@ module Critters.State
 where
 
 import Critters.State.Conversation (Conversation (..))
+import Critters.State.Critter (Critter (..))
 import Critters.State.GameState (GameState (..), conversationText, initialState, npcAt, world)
 import Critters.State.Location (Location (..))
 import Critters.State.MapId (MapId (..))
