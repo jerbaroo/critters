@@ -105,7 +105,7 @@ resolveAction state action = case Common.contextFor state of
 runTurn :: Action -> State Context ()
 runTurn action = do
   initial <- State.get
-  State.modify $ \context -> context{contextBattle = (contextBattle context){battleMessages = [], battleSelected = 0}}
+  State.modify $ \context -> context{contextBattle = (contextBattle context){battleMessages = [], battlePhase = ActionMenu, battleSelected = 0, battleSelectedItem = Nothing}}
   if battlePhase (contextBattle initial) == ReplacementMenu
     then executeAction Player action >> settle
     else do

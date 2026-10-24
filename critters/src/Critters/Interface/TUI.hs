@@ -12,6 +12,7 @@ import Critters.State.ActiveInteraction (ActiveInteraction (..))
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.Battle qualified as Battle
 import Critters.State.BattleDefinition qualified as Definition
+import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.BattleProfile qualified as Profile
 import Critters.State.Choice qualified as Choice
 import Critters.State.Critter qualified as Critter
@@ -80,9 +81,9 @@ renderBattle state = case BattleCommon.contextFor state of
   Just context ->
     renderText 6 (Text.intercalate "\n" ["Battle — " <> Definition.definitionName (Battle.battleDefinition active), "", description "Opponent" BattleCommon.Enemy context, description "You" BattleCommon.Player context, "", ""])
       <> renderText 5 (Text.intercalate "\n" (reverse (take 5 (reverse (Battle.battleMessages active)))))
-      <> renderText 1 "Choose:"
+      <> renderText 1 (case Battle.battlePhase active of Finished -> "Battle complete:"; MoveMenu -> "Choose a move:"; ItemMenu -> "Choose an item:"; ItemTargetMenu -> "Choose a target:"; ReplacementMenu -> "Choose a replacement:"; SwitchMenu -> "Choose a critter:"; ActionMenu -> "Choose an action:")
       <> concatMap (renderText 1) (take menuHeight (drop offset choices <> repeat ""))
-      <> renderText 1 "↑/↓ j/k: Select  Enter: Confirm  Esc: Back  q: Quit"
+      <> renderText 1 (case Battle.battlePhase active of Finished -> "Enter: Continue  q: Quit"; ReplacementMenu -> "↑/↓ j/k: Select  Enter: Switch  q: Quit"; _ -> "↑/↓ j/k: Select  Enter: Confirm  Esc: Back  q: Quit")
     where
       active = BattleCommon.contextBattle context
       choices = [(if index == Battle.battleSelected active then "> " else "  ") <> label | (index, (label, _)) <- zip [0 ..] (BattleMenu.entries state)]
@@ -91,7 +92,7 @@ renderBattle state = case BattleCommon.contextFor state of
   where
     description label side context = case BattleCommon.active side context of
       Nothing -> label <> ": —"
-      Just critter -> label <> ": " <> Critter.species critter <> "  Lv " <> number (Critter.level critter) <> "  HP " <> number (Critter.hitPoints critter) <> "/" <> number (Critter.maxHitPoints critter) <> maybe "" (\status -> "  [" <> Affliction.afflictionStatus status <> "]") (Profile.profileStatus (Critter.battleProfile critter))
+      Just critter -> label <> ": " <> BattleCommon.displayName context critter <> "  Lv " <> number (Critter.level critter) <> "  HP " <> number (Critter.hitPoints critter) <> "/" <> number (Critter.maxHitPoints critter) <> maybe "" (\status -> "  [" <> Affliction.afflictionStatus status <> "]") (Profile.profileStatus (Critter.battleProfile critter))
     number value = from (toLazyText (decimal value))
 
 renderChoices :: ActiveInteraction -> [[Cell]]

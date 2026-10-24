@@ -58,7 +58,7 @@ applyEvent :: GameState -> Event -> GameState
 applyEvent state = \case
   Event.BattleChanged update -> state{battle = Just (updateBattle update), inventory = fromMaybe (inventory state) (updateInventory update), party = fromMaybe (party state) (updateParty update), randomSeed = fromMaybe (randomSeed state) (updateSeed update)}
   Event.BattleEnded -> state{battle = Nothing}
-  Event.BattleStarted active -> state{battle = Just active}
+  Event.BattleStarted active -> state{battle = Just active, randomSeed = fromMaybe (randomSeed state) (Battle.battleInitialSeed active)}
   Event.ConversationAdvanced index -> state{conversation = fmap (\active -> active{lineIndex = index}) (conversation state)}
   Event.ConversationEnded -> state{conversation = Nothing}
   Event.ConversationStarted identifier -> state{conversation = Just (Conversation 0 identifier)}
@@ -182,6 +182,7 @@ eventsForEffects state = fmap snd . foldM apply (state, [])
     apply (current, events) effect = do
       event <- case effect of
         Effect.GiveCritter critter
+          | not (Map.null (Config.configSpecies (combat current))) && not (BattleCommon.validCritter (combat current) critter) -> Left "That critter has invalid combat data."
           | length (members (party current)) < maxPartySize current -> Right (Event.CritterReceived critter)
           | otherwise -> Left "Your party is full."
         Effect.GiveItem identifier count

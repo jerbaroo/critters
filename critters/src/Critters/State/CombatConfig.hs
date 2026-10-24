@@ -2,6 +2,7 @@ module Critters.State.CombatConfig (CombatConfig (..), defaultCombat) where
 
 import Autodocodec qualified as Codec
 import Autodocodec (Autodocodec (..), HasCodec)
+import Critters.Formula qualified as Formula
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.BattleDefinition (BattleDefinition)
 import Critters.State.BattleDefinition qualified as Definition
@@ -14,7 +15,7 @@ import Critters.State.Item (Item)
 import Critters.State.Move (Move)
 import Critters.State.Move qualified as Move
 import Critters.State.MoveEffect (MoveEffect (..))
-import Critters.State.MoveId (MoveId)
+import Critters.State.MoveId (MoveId (..))
 import Critters.State.Rules (Rules, defaultRules)
 import Critters.State.Rules qualified as Rules
 import Critters.State.Species (Species)
@@ -61,6 +62,7 @@ instance HasCodec CombatConfig where
     where
       validate value
         | any (Text.null . Text.strip) (Map.keys (configBattles value) <> Map.keys (configItems value) <> Map.keys (configSpecies value) <> Map.keys (configStatuses value)) = Left "Combat identifiers must not be blank."
+        | any (\(MoveId identifier) -> Text.null (Text.strip identifier)) (Map.keys (configMoves value)) = Left "Move identifiers must not be blank."
         | any (not . knownMove) (concatMap (concat . Map.elems . Species.speciesLearnset) (Map.elems (configSpecies value))) = Left "A species learnset references a missing move."
         | any (not . validEffect) (Move.moveEffects (Rules.rulesFallbackMove (configRules value)) <> concatMap Move.moveEffects (Map.elems (configMoves value))) = Left "A move effect references an unknown status or invalid stat."
         | any (not . validCritter) (concatMap Definition.definitionOpponents (Map.elems (configBattles value))) = Left "An opposing critter references an unknown species, move or status."
@@ -73,7 +75,7 @@ instance HasCodec CombatConfig where
           validCritter critter = Map.member (Critter.species critter) (configSpecies value) && all knownMove (Profile.profileKnownMoves (Critter.battleProfile critter)) && maybe True (\affliction -> Map.member (Affliction.afflictionStatus affliction) (configStatuses value)) (Profile.profileStatus (Critter.battleProfile critter))
           validEffect = \case
             Chance _ effect -> validEffect effect
-            ChangeHealth _ _ -> True
+            ChangeHealth _ formula -> either (const False) (all (`elem` ["damage", "hp", "maxHP", "level", "targetHP", "targetMaxHP"])) (Formula.variables formula)
             ChangeStage _ stat _ -> not (Text.null (Text.strip stat))
             ClearStatus _ -> True
             InflictStatus _ identifier -> Map.member identifier (configStatuses value)

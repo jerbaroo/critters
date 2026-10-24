@@ -1,5 +1,6 @@
 module Main (main) where
 
+import BattlePersistenceTests qualified as BattlePersistenceTests
 import BattleTests qualified as BattleTests
 import Control.Exception (bracket)
 import Control.Monad (forM_)
@@ -813,7 +814,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, saveTests, stateTests, tuiTests, warpTests]
+tests = testGroup "Critters" [BattlePersistenceTests.tests, BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, saveTests, stateTests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =

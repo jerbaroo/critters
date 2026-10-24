@@ -190,6 +190,7 @@ test-suite critters-test
 
     -- Modules included in this executable, other than Main.
     other-modules:
+        BattlePersistenceTests
         BattleTests
         InteractionTests
 

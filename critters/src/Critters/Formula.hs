@@ -4,7 +4,7 @@ module Critters.Formula (evaluate, Formula (..), variables) where
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
 import Data.Aeson qualified as Aeson
-import Data.Char (isAlpha, isAlphaNum)
+import Data.Char (isAlpha, isAlphaNum, isDigit)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -74,8 +74,11 @@ parse (Formula source) = case P.readP_to_S (spaces *> comparison <* P.eof) (from
     arguments = P.between (symbol "(") (symbol ")") (P.sepBy comparison (symbol ","))
     atom =
       P.between (symbol "(") (symbol ")") comparison
-        P.<++ (symbol "-" *> (Binary "-" (Number 0) <$> atom))
-        P.<++ (Number <$> lexeme (P.readS_to_P (reads :: ReadS Double)))
+        P.<++ (do
+          remaining <- P.look
+          case remaining of
+            first : _ | isDigit first -> Number <$> lexeme (P.readS_to_P (reads :: ReadS Double))
+            _ -> P.pfail)
         P.<++ do
           first <- P.satisfy (\value -> isAlpha value || value == '_')
           rest <- P.munch (\value -> isAlphaNum value || value == '_')
@@ -84,11 +87,14 @@ parse (Formula source) = case P.readP_to_S (spaces *> comparison <* P.eof) (from
           (Call name <$> arguments) P.<++ pure (Variable name)
     comparison = P.chainl1 additive (operator ["<=", ">=", "==", "!=", "<", ">"])
     lexeme parser = parser <* spaces
-    multiplicative = P.chainl1 power (operator ["*", "/"])
+    multiplicative = P.chainl1 unary (operator ["*", "/"])
     operator values = P.choice [Binary value <$ symbol (from value) | value <- values]
-    power = P.chainr1 atom (operator ["^"])
+    power = do
+      base <- atom
+      (Binary "^" base <$> (symbol "^" *> unary)) P.<++ pure base
     spaces = P.skipSpaces
     symbol = lexeme . P.string
+    unary = (symbol "-" *> (Binary "-" (Number 0) <$> unary)) P.<++ (symbol "+" *> unary) P.<++ power
     validate expression = case expression of
       Binary _ left right -> validate left >> validate right >> Right expression
       Call name values

@@ -1,9 +1,9 @@
 -- | Pure battle operations shared by turn resolution, menus and encounters.
 module Critters.Battle.Common
   ( active, activeIndex, allCritters, availableMoves, baseStat, changedEvents, chance,
-    chooseInt, chooseWeighted, Context (..), contextFor, emit, endBattle, evaluate, healParty, knownMoves,
+    chooseInt, chooseWeighted, Context (..), contextFor, displayName, emit, endBattle, evaluate, healParty, knownMoves,
     modifyActive, modifyAt, moveRemaining, opposite, randomUnit, rulesFor,
-    setCritter, setStage, Side (..), stageFactor, stat, statsFor, usable
+    setCritter, setStage, Side (..), stageFactor, stat, statsFor, usable, validCritter
   ) where
 
 import Control.Monad.Trans.State.Strict (State)
@@ -36,6 +36,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Witch (from, tryFrom)
 
 active :: Side -> Context -> Maybe Critter
@@ -115,6 +116,11 @@ data Context = Context
 
 contextFor :: GameState -> Maybe Context
 contextFor state = (\activeBattle -> Context activeBattle (inventory state) (maxPartySize state) (party state) (randomSeed state)) <$> battle state
+
+displayName :: Context -> Critter -> Text
+displayName context critter = case Map.lookup (Critter.species critter) (Config.configSpecies (battleConfig (contextBattle context))) of
+  Just definition | not (Text.null (Species.speciesName definition)) -> Species.speciesName definition
+  _ -> Critter.species critter
 
 emit :: Text -> State Context ()
 emit message = State.modify $ \context -> context{contextBattle = (contextBattle context){battleMessages = battleMessages (contextBattle context) <> [message]}}
@@ -212,3 +218,16 @@ statsFor current critter = Map.map (\base -> max 1 (evaluate (number base) (Rule
 
 usable :: Critter -> Bool
 usable = (> 0) . Critter.hitPoints
+
+validCritter :: Config.CombatConfig -> Critter -> Bool
+validCritter config critter =
+  Map.member (Critter.species critter) (Config.configSpecies config)
+    && Critter.level critter <= Rules.rulesMaxLevel (Config.configRules config)
+    && all (`Map.member` Config.configMoves config) (Profile.profileKnownMoves profile)
+    && all validUses (Map.toList (Profile.profileRemainingUses profile))
+    && maybe True (\affliction -> Map.member (Affliction.afflictionStatus affliction) (Config.configStatuses config)) (Profile.profileStatus profile)
+  where
+    profile = Critter.battleProfile critter
+    validUses (identifier, remaining) = case Map.lookup identifier (Config.configMoves config) of
+      Just move -> remaining >= 0 && (Move.moveMaxUses move == 0 || remaining <= Move.moveMaxUses move)
+      Nothing -> False

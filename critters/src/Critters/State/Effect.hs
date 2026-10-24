@@ -6,8 +6,8 @@ import Critters.State.Critter (Critter)
 import Critters.State.FlagId (FlagId)
 import Critters.State.ObjectId (ObjectId)
 import Data.Aeson qualified as Aeson
-import Data.Text (Text)
 import Data.HashMap.Strict qualified as HashMap
+import Data.Text (Text)
 
 -- | An interaction's requested outcome, validated before events are produced.
 data Effect
@@ -43,7 +43,7 @@ instance HasCodec Effect where
       given :: JSONObjectCodec Critter
       given = Codec.requiredField "critter" "The critter to add to the party."
       item :: JSONObjectCodec (Text, Int)
-      item = (,) <$> Codec.requiredField "item" "Game-defined item identifier." Codec..= fst <*> Codec.requiredField "count" "Positive item count." Codec..= snd
+      item = (,) <$> Codec.requiredField "item" "Game-defined item identifier." Codec..= fst <*> Codec.requiredFieldWith "count" (Codec.bimapCodec (\count -> if count > 0 then Right count else Left "Item grants must be positive.") id Codec.codec) "Positive item count." Codec..= snd
       removed :: JSONObjectCodec ObjectId
       removed = Codec.requiredField "objectId" "The world object to remove."
       set :: JSONObjectCodec (FlagId, Bool)

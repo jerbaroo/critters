@@ -13,7 +13,6 @@ import Critters.State.BattleDefinition qualified as Definition
 import Critters.State.BattleOutcome (BattleOutcome (..))
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.CombatConfig qualified as Config
-import Critters.State.Critter qualified as Critter
 import Critters.State.Effect (Effect)
 import Critters.State.GameState (GameState (..))
 import Critters.State.Party qualified as Party
@@ -30,18 +29,20 @@ beginBattle state identifier
       definition <- maybe (Left "That battle is not defined.") Right (Map.lookup identifier (Config.configBattles (combat state)))
       player <- maybe (Left "You need a conscious critter to battle.") Right (findIndex Common.usable (Party.members (party state)))
       opponent <- maybe (Left "There are no conscious opponents.") Right (findIndex Common.usable (Definition.definitionOpponents definition))
-      if all (\critter -> Map.member (Critter.species critter) (Config.configSpecies (combat state))) (Party.members (party state) <> Definition.definitionOpponents definition)
+      if length (Definition.definitionOpponents definition) > maxPartySize state then Left "Opposing party exceeds the game party limit."
+      else if all (Common.validCritter (combat state)) (Party.members (party state) <> Definition.definitionOpponents definition)
         then Right defaultBattle
           { battleActiveOpponent = opponent,
             battleActivePlayer = player,
             battleConfig = combat state,
             battleDefinition = definition,
+            battleInitialSeed = Just (randomSeed state),
             battleMessages = [Definition.definitionName definition],
             battleOpponentParty = Definition.definitionOpponents definition,
             battleParticipants = [player],
             battleRewardedOpponents = [index | (index, critter) <- zip [0 ..] (Definition.definitionOpponents definition), not (Common.usable critter)]
           }
-        else Left "A participant has no species definition."
+        else Left "A participant has an invalid species, move, status, resource count or level."
 
 commandFor :: Input -> Maybe Command
 commandFor = \case

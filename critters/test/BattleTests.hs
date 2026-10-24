@@ -1,4 +1,4 @@
-module BattleTests (tests) where
+module BattleTests (fixture, start, tests) where
 
 import Critters.Battle.Action (Action (..))
 import Critters.Battle.Engine qualified as BattleEngine
@@ -255,6 +255,7 @@ tests = testGroup "Battle"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)
           assertBool "Expected lazy conditionals and comparisons" (Formula.evaluate Map.empty (Formula "if(2 >= 1, 2^3 + ceil(1.2), 1/0)") == Right 10)
+          assertBool "Expected exponentiation before negation" (Formula.evaluate Map.empty (Formula "-2^2 + 2^-2 + 2^3^2") == Right 508.25)
           assertBool "Expected a finite rule result" (isLeft (Formula.evaluate Map.empty (Formula "1/0")))
           assertBool "Expected unknown variables to fail" (isLeft (Formula.evaluate Map.empty (Formula "missing + 1"))),
         testCase "Round trip a game-defined ruleset" $

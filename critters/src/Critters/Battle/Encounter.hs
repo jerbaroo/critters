@@ -51,7 +51,8 @@ eventsForStep state
             Left _ -> pure Nothing
             Right active -> do
               opponents <- traverse (vary entry) (battleOpponentParty active)
-              pure (Just active{battleOpponentParty = opponents})
+              seed <- State.gets contextSeed
+              pure (Just active{battleInitialSeed = Just seed, battleOpponentParty = opponents})
     steps = if encounterSteps state == maxBound then maxBound else encounterSteps state + 1
 
 vary :: EncounterEntry -> Critter -> State Context Critter
