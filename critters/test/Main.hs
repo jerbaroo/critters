@@ -276,11 +276,13 @@ eventTests :: TestTree
 eventTests =
   testGroup
     "Event"
-    [ testCase "Load conversation and turning facts"
+    [ testCase "Load independently specified facts"
         $ forM_
           [ ("{\"lineIndex\":1,\"type\":\"conversation-advanced\"}", Event.ConversationAdvanced 1),
             ("{\"type\":\"conversation-ended\"}", Event.ConversationEnded),
             ("{\"npcId\":\"guide\",\"type\":\"conversation-started\"}", Event.ConversationStarted (NpcId "guide")),
+            ("{\"type\":\"party-closed\"}", Event.PartyClosed),
+            ("{\"type\":\"party-opened\"}", Event.PartyOpened),
             ("{\"direction\":\"west\",\"type\":\"player-turned\"}", Event.PlayerTurned West),
             ("{\"location\":{\"mapId\":\"room\",\"position\":{\"x\":0,\"y\":1}},\"type\":\"player-warped\"}", Event.PlayerWarped (Location (MapId "room") (Position 0 1)))
           ]
@@ -306,6 +308,7 @@ eventTests =
         $ assertBool "Expected a parse error"
         $ isLeft (Aeson.eitherDecode @Event.Event "{\"position\":{\"x\":2,\"y\":1},\"type\":\"walk\"}"),
       testCase "Round trips" $ do
+        forM_ [Event.PartyClosed, Event.PartyOpened] assertRoundTrip
         forM_ [Position (-1) 2, Position minBound maxBound] (assertRoundTrip . Event.PlayerMoved)
         forM_ [Event.ConversationAdvanced 1, Event.ConversationEnded, Event.ConversationStarted (NpcId "guide"), Event.PlayerTurned East, Event.PlayerTurned North, Event.PlayerTurned South, Event.PlayerTurned West, Event.PlayerWarped (Location (MapId "room") (Position 0 1))] assertRoundTrip,
       testCase "Save the expected JSON structure"
@@ -408,6 +411,64 @@ partyTests =
     configured = Party [critter, critter{hitPoints = 7}]
     critter = Critter 20 5 20 "leafling"
     fixture = "{\"members\":[{\"hitPoints\":20,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"},{\"hitPoints\":7,\"level\":5,\"maxHitPoints\":20,\"species\":\"leafling\"}]}"
+
+partyViewTests :: TestTree
+partyViewTests =
+  testGroup
+    "Party view"
+    [ testCase "Block gameplay through inputs and direct commands while open" $ do
+        let opened = npcState{partyOpen = True}
+        forM_ [Input.Down, Input.Enter, Input.Left, Input.Right, Input.Up, Input.Character 'p', Input.Character 'x'] $ \input ->
+          assertBool "Expected gameplay inputs to leave the party view and world unchanged" $
+            Engine.commandFor opened input == Nothing && Engine.step opened input == (opened, [])
+        forM_ [Command.AdvanceConversation, Command.ConfirmSelection, Command.EndConversation, Command.Interact, Command.OpenParty, Command.SelectNext, Command.SelectPrevious, Command.Walk East, Command.Walk North, Command.Walk South, Command.Walk West] $ \command ->
+          assertBool "Expected direct commands to respect the open party view" (Engine.eventsFor opened command == []),
+      testCase "Keep conversation and party contexts separate" $
+        let talking = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}
+         in assertBool "Expected p to be ignored during dialogue and quit to remain available" $
+              Engine.commandFor talking (Input.Character 'p') == Nothing
+                && Engine.step talking (Input.Character 'p') == (talking, [])
+                && Engine.eventsFor talking Command.OpenParty == []
+                && Engine.commandFor npcState{partyOpen = True} (Input.Character 'q') == Just Command.Quit,
+      testCase "Load and round trip an open party view" $ do
+        assertRoundTrip initialState{partyOpen = True}
+        forM_ ["\"maps\":{\"overworld\":{\"tiles\":[]}}", "\"world\":{\"tiles\":[]}"] $ \layout ->
+          let encoded = "{" <> layout <> ",\"partyOpen\":true,\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
+           in assertBool "Expected both game formats to preserve the open view" $
+                fmap partyOpen (Aeson.eitherDecode @GameState encoded) == Right True,
+      testCase "Open with p and close with Escape" $
+        forM_ [initialState, npcState] $ \starting ->
+          let (opened, started) = Engine.step starting (Input.Character 'p')
+              (closed, ended) = Engine.step opened Input.Escape
+           in assertBool "Expected only the view state to change, with exploration restored on closing" $
+                Engine.commandFor starting (Input.Character 'p') == Just Command.OpenParty
+                  && opened == starting{partyOpen = True}
+                  && started == [Event.PartyOpened]
+                  && Engine.commandFor opened Input.Escape == Just Command.CloseMenu
+                  && closed == starting
+                  && ended == [Event.PartyClosed]
+                  && Engine.eventsFor closed Command.CloseMenu == []
+                  && Engine.step closed Input.Up == Engine.step starting Input.Up,
+      testCase "Replay view facts without checking their preconditions" $ do
+        let talking = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}
+            opened = Engine.applyEvent talking Event.PartyOpened
+            target = Location (MapId "missing") (Position (-3) 12)
+        assertBool "PartyOpened should change only partyOpen, preserving the conversation" $
+          opened == talking{partyOpen = True}
+        assertBool "PartyClosed should change only partyOpen, preserving the conversation" $
+          Engine.applyEvent opened Event.PartyClosed == talking
+        assertBool "ConversationStarted should preserve partyOpen" $
+          Engine.applyEvent npcState{partyOpen = True} (Event.ConversationStarted (NpcId "guide")) == talking{partyOpen = True}
+        assertBool "PlayerWarped should preserve partyOpen while applying its existing map, position and conversation changes" $
+          Engine.applyEvent opened (Event.PlayerWarped target) == npcState{partyOpen = True, playerMap = MapId "missing", playerPosition = Position (-3) 12},
+      testCase "Save and resume party view history" $
+        withSaveFile $ \path ->
+          forM_ [([Event.PartyOpened], initialState{partyOpen = True}), ([Event.PartyOpened, Event.PartyClosed], initialState)] $ \(history, expected) -> do
+            written <- Save.save path history
+            loaded <- Save.load path
+            assertBool "Expected view facts to survive disk and reproduce the open or closed state" $
+              written == Right () && loaded == Right history && fmap (Save.apply initialState) loaded == Right expected
+    ]
 
 saveTests :: TestTree
 saveTests =
@@ -623,7 +684,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [conversationTests, critterTests, engineTests, eventTests, inputTests, partyTests, saveTests, stateTests, tuiTests, warpTests]
+tests = testGroup "Critters" [conversationTests, critterTests, engineTests, eventTests, inputTests, partyTests, partyViewTests, saveTests, stateTests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =

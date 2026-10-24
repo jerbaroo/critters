@@ -18,6 +18,8 @@ data Event
   = ConversationAdvanced Int
   | ConversationEnded
   | ConversationStarted NpcId
+  | PartyClosed
+  | PartyOpened
   | PlayerMoved Position
   | PlayerTurned Direction
   | PlayerWarped Location
@@ -32,6 +34,8 @@ instance HasCodec Event where
         [ ("conversation-advanced", ("ConversationAdvanced", Codec.mapToDecoder ConversationAdvanced advanced)),
           ("conversation-ended", ("ConversationEnded", pure ConversationEnded)),
           ("conversation-started", ("ConversationStarted", Codec.mapToDecoder ConversationStarted started)),
+          ("party-closed", ("PartyClosed", pure PartyClosed)),
+          ("party-opened", ("PartyOpened", pure PartyOpened)),
           ("player-moved", ("PlayerMoved", Codec.mapToDecoder PlayerMoved moved)),
           ("player-turned", ("PlayerTurned", Codec.mapToDecoder PlayerTurned turned)),
           ("player-warped", ("PlayerWarped", Codec.mapToDecoder PlayerWarped warped))
@@ -43,6 +47,8 @@ instance HasCodec Event where
         ConversationAdvanced index -> ("conversation-advanced", Codec.mapToEncoder index advanced)
         ConversationEnded -> ("conversation-ended", pure ())
         ConversationStarted identifier -> ("conversation-started", Codec.mapToEncoder identifier started)
+        PartyClosed -> ("party-closed", pure ())
+        PartyOpened -> ("party-opened", pure ())
         PlayerMoved destination -> ("player-moved", Codec.mapToEncoder destination moved)
         PlayerTurned direction -> ("player-turned", Codec.mapToEncoder direction turned)
         PlayerWarped destination -> ("player-warped", Codec.mapToEncoder destination warped)
@@ -60,6 +66,8 @@ instance Pretty Event where
     ConversationAdvanced index -> from $ toLazyText $ "ConversationAdvanced " <> decimal index
     ConversationEnded -> "ConversationEnded"
     ConversationStarted identifier -> "ConversationStarted " <> pretty identifier
+    PartyClosed -> "PartyClosed"
+    PartyOpened -> "PartyOpened"
     PlayerMoved destination -> "PlayerMoved " <> pretty destination
     PlayerTurned direction -> "PlayerTurned " <> pretty direction
     PlayerWarped destination -> "PlayerWarped " <> pretty destination

@@ -34,6 +34,7 @@ data GameState = GameState
     maxPartySize :: Int,
     npcs :: Map NpcId Npc,
     party :: Party,
+    partyOpen :: Bool,
     playerDirection :: Direction,
     playerMap :: MapId,
     playerPosition :: Position
@@ -63,6 +64,7 @@ initialState =
       maxPartySize = 6,
       npcs = Map.empty,
       party = Party.empty,
+      partyOpen = False,
       playerDirection = North,
       playerMap = MapId "overworld",
       playerPosition = Position 1 4
@@ -89,18 +91,20 @@ instance HasCodec GameState where
           <*> Codec.optionalFieldWithOmittedDefault "maxPartySize" 6 "The positive game-wide limit on party members." Codec..= maxPartySize
           <*> Codec.optionalFieldWithOmittedDefault "npcs" Map.empty "Stationary NPCs indexed by their stable identifiers." Codec..= npcs
           <*> Codec.optionalFieldWithOmittedDefault "party" Party.empty "The player's ordered party." Codec..= party
+          <*> Codec.optionalFieldWithOmittedDefault "partyOpen" False "Whether the party view is open." Codec..= partyOpen
           <*> Codec.optionalFieldWithOmittedDefault "playerDirection" North "The direction the player faces." Codec..= playerDirection
           <*> Codec.optionalFieldWithOmittedDefault "playerMap" (MapId "overworld") "The active map." Codec..= playerMap
           <*> Codec.requiredField "playerPosition" "The player's coordinates in the active map." Codec..= playerPosition
           <* Codec.requiredFieldWith "version" versionCodec "Save format version. Must be 1." Codec..= const 1
       legacy =
-        ( \active limit actors critters facing coordinates layout ->
-            GameState active (Map.singleton (MapId "overworld") layout) limit actors critters facing (MapId "overworld") coordinates
+        ( \active limit actors critters opened facing coordinates layout ->
+            GameState active (Map.singleton (MapId "overworld") layout) limit actors critters opened facing (MapId "overworld") coordinates
         )
           <$> Codec.optionalFieldOrNull "conversation" "The active conversation, if any." Codec..= conversation
           <*> Codec.optionalFieldWithOmittedDefault "maxPartySize" 6 "The positive game-wide limit on party members." Codec..= maxPartySize
           <*> Codec.optionalFieldWithOmittedDefault "npcs" Map.empty "Stationary NPCs." Codec..= npcs
           <*> Codec.optionalFieldWithOmittedDefault "party" Party.empty "The player's ordered party." Codec..= party
+          <*> Codec.optionalFieldWithOmittedDefault "partyOpen" False "Whether the party view is open." Codec..= partyOpen
           <*> Codec.optionalFieldWithOmittedDefault "playerDirection" North "The direction the player faces." Codec..= playerDirection
           <*> Codec.requiredField "playerPosition" "Coordinates in the overworld." Codec..= playerPosition
           <*> Codec.requiredField "world" "Legacy single-map layout." Codec..= world

@@ -9,6 +9,7 @@ data Command
   | ConfirmSelection
   | EndConversation
   | Interact
+  | OpenParty
   | Quit
   | SelectNext
   | SelectPrevious
@@ -22,6 +23,7 @@ instance Pretty Command where
     ConfirmSelection -> "ConfirmSelection"
     EndConversation -> "EndConversation"
     Interact -> "Interact"
+    OpenParty -> "OpenParty"
     Quit -> "Quit"
     SelectNext -> "SelectNext"
     SelectPrevious -> "SelectPrevious"
