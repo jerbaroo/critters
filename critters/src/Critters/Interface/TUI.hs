@@ -6,7 +6,7 @@ import Critters.Interface.TUI.Keyboard qualified as Keyboard
 import Critters.State.GameState (GameState (..), conversationText, npcAt, world)
 import Critters.State.Position (Position (..))
 import Critters.State.Tile (Tile (..))
-import Critters.State.World (World (..), tileAt)
+import Critters.State.World (tileAt)
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -31,7 +31,8 @@ output state = do
     "\ESC[2J\ESC[H"
       <> Text.replace "\n" "\r\n" (render state)
 
--- | A fixed viewport with north at the top, padded outside the world.
+-- | A fixed viewport centered on the player, with north at the top and blanks
+-- for missing cells, including those outside the map.
 render :: GameState -> Text
 render state = Text.unlines (rows <> maybe [] (\line -> ["", line]) (conversationText state))
   where
@@ -69,14 +70,12 @@ render state = Text.unlines (rows <> maybe [] (\line -> ["", line]) (conversatio
           Just Wall -> "🧱"
           Just Water -> "🌊"
           Nothing -> "\x3000"
-    origin size extent coordinate = max 0 $ min (max 0 (extent - size)) (max 0 coordinate - size `div` 2)
-    originX = origin width (maximum (0 : map length worldRows)) (x (playerPosition state))
-    originY = origin height (length worldRows) (y (playerPosition state))
+    originX = x (playerPosition state) - width `div` 2
+    originY = y (playerPosition state) + height `div` 2
     rows =
-      [ Text.concat [cell (Position (originX + column) (originY + row)) | column <- [0 .. width - 1]]
-      | row <- reverse [0 .. height - 1]
+      [ Text.concat [cell (Position (originX + column) (originY - row)) | column <- [0 .. width - 1]]
+      | row <- [0 .. height - 1]
       ]
-    worldRows = tiles (world state)
 
 writeLog :: () -> FilePath -> Text -> IO ()
 writeLog _ = TextIO.appendFile

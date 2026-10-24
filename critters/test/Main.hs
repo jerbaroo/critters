@@ -500,17 +500,19 @@ tuiTests :: TestTree
 tuiTests =
   testGroup
     "TUI"
-    [ testCase "Camera follows the player and stops at world edges"
+    [ testCase "Keep the player centered at and beyond map edges"
         $ forM_
-          [ (Position 0 0, (0, 0)),
-            (Position 0 (TUI.height * 2 - 1), (0, TUI.height - 1)),
-            (Position TUI.width TUI.height, (TUI.width `div` 2, TUI.height `div` 2)),
-            (Position (TUI.width * 2 - 1) 0, (TUI.width - 1, 0)),
-            (Position (TUI.width * 2 - 1) (TUI.height * 2 - 1), (TUI.width - 1, TUI.height - 1))
+          [ Position 0 0,
+            Position 0 (TUI.height * 2 - 1),
+            Position TUI.width TUI.height,
+            Position (TUI.width * 2 - 1) 0,
+            Position (TUI.width * 2 - 1) (TUI.height * 2 - 1),
+            Position (-5) (-8)
           ]
-        $ \(position, destination) ->
-          assertBool "Expected the player at the centered or clamped viewport position" $
-            tile (view (gameState position largeWorld)) destination == "🧑",
+        $ \position ->
+          forM_ [largeWorld, filledWorld [[Ground]], filledWorld []] $ \layout ->
+            assertBool "Expected the player at the same central viewport cell regardless of map bounds" $
+              tile (view (gameState position layout)) (0, 0) == "🧑",
       testCase "Draw one marker per building footprint" $
         forM_ [(Arena, "🥊"), (House, "🏠"), (Laboratory, "🔬"), (Shop, "🏪"), (Clinic, "🏥")] $ \(building, marker) ->
           let layout = filledWorld [[building, building], [building, Door]]
@@ -519,26 +521,29 @@ tuiTests =
                 Text.count marker drawing == 1 && Text.count "🚪" drawing == 1,
       testCase "Draw stationary NPCs over their terrain"
         $ assertBool "Expected the NPC and player at their separate ground positions"
-        $ tile (view npcState) (2, 1) == "🧓"
-          && tile (view npcState) (1, 1) == "🧑",
+        $ tile (view npcState) (1, 0) == "🧓"
+          && tile (view npcState) (0, 0) == "🧑",
       testCase "Empty and ragged worlds retain a fixed viewport" $
         forM_ [filledWorld [], filledWorld [[]], filledWorld [[Wall], [], [Ground, Water]]] $ \layout -> do
           let rows = view (gameState (Position minBound maxBound) layout)
           assertBool "Expected the configured rows and one wide glyph per floor cell" $
             length rows == TUI.height && all ((== TUI.width) . Text.length) rows
-          assertBool "Expected out-of-viewport players to be omitted" $
-            all (not . Text.isInfixOf "🧑") rows,
-      testCase "Movement appears above the old position when walking north" $
-        let state = gameState (Position 2 2) largeWorld
+          assertBool "Expected even out-of-world players to remain centered" $
+            tile rows (0, 0) == "🧑" && sum (map (Text.count "🧑") rows) == 1,
+      testCase "Movement scrolls terrain while keeping the player centered" $
+        let layout = filledWorld [[Ground, Ground, Wall, Ground, Ground], replicate 5 Ground, replicate 5 Ground, replicate 5 Ground, replicate 5 Ground]
+            state = gameState (Position 2 2) layout
             (nextState, _) = Engine.step state Input.Up
-         in assertBool "Expected the player one row higher, with the old terrain restored" $
-              tile (view state) (2, 2) == "🧑"
-                && tile (view nextState) (2, 3) == "🧑"
-                && tile (view nextState) (2, 2) == "⬜",
+         in assertBool "Expected terrain to shift south as the player walks north" $
+              tile (view state) (0, 0) == "🧑"
+                && tile (view nextState) (0, 0) == "🧑"
+                && tile (view state) (0, 2) == "🧱"
+                && tile (view nextState) (0, 1) == "🧱"
+                && tile (view nextState) (0, -1) == "⬜",
       testCase "Render ledge directions" $
         let rows = view (gameState (Position (-1) (-1)) (filledWorld [[Ledge East, Ledge North, Ledge South, Ledge West]]))
          in assertBool "Expected arrows showing the permitted crossing direction" $
-              Text.take 4 (last rows) == "⏩🔺🔻⏪",
+              Text.concat [tile rows (column, 1) | column <- [1 .. 4]] == "⏩🔺🔻⏪",
       testCase "Render dialogue below the map" $
         forM_ [(0, "Hello!"), (1, "Visit my lab.")] $ \(index, expected) ->
           let active = npcState{conversation = Just (Conversation index (NpcId "guide"))}
@@ -549,18 +554,20 @@ tuiTests =
       testCase "Render missing cells as padding" $
         let rows = view (gameState (Position (-1) (-1)) (World [[Nothing, Just Ground, Nothing]] []))
          in assertBool "Expected missing cells on either side of real terrain to remain blank" $
-              Text.take 3 (last rows) == "\x3000⬜\x3000",
+              Text.concat [tile rows (column, 1) | column <- [1 .. 3]] == "\x3000⬜\x3000",
       testCase "Render tiles north-up with the player over the terrain" $
         let rows = view (gameState (Position 0 0) (filledWorld [[TallGrass, Wall, Ground], [Ground, Water, Wall]]))
-         in assertBool "Expected all tile glyphs, padding, and the player at the bottom-left" $
-              Text.take 3 (rows !! (TUI.height - 2)) == "🌿🧱⬜"
-                && Text.take 3 (rows !! (TUI.height - 1)) == "🧑🌊🧱"
+         in assertBool "Expected north-up terrain around the centered player and blanks beyond every map edge" $
+              Text.concat [tile rows (column, 1) | column <- [0 .. 2]] == "🌿🧱⬜"
+                && Text.concat [tile rows (column, 0) | column <- [0 .. 2]] == "🧑🌊🧱"
+                && tile rows (-1, 0) == "\x3000"
+                && tile rows (0, -1) == "\x3000"
                 && tile rows (3, 0) == "\x3000"
-                && tile rows (0, TUI.height - 1) == "\x3000"
+                && tile rows (0, TUI.height `div` 2) == "\x3000"
     ]
   where
     largeWorld = filledWorld (replicate (TUI.height * 2) (replicate (TUI.width * 2) Ground))
-    tile rows (column, row) = Text.take 1 $ Text.drop column (rows !! (TUI.height - row - 1))
+    tile rows (column, row) = Text.take 1 $ Text.drop (TUI.width `div` 2 + column) (rows !! (TUI.height `div` 2 - row))
     view = Text.lines . TUI.render
 
 warpState :: GameState
@@ -612,8 +619,8 @@ warpTests =
         let (arrived, _) = Engine.step warpState Input.Up
             rows = Text.lines (TUI.render arrived)
          in assertBool "Expected only the active map's terrain, player and padding" $
-              Text.take 3 (rows !! (TUI.height - 2)) == "🧑⬜\x3000"
-                && Text.take 3 (last rows) == "⬜🌊\x3000",
+              Text.take 3 (Text.drop (TUI.width `div` 2) (rows !! (TUI.height `div` 2))) == "🧑⬜\x3000"
+                && Text.take 3 (Text.drop (TUI.width `div` 2) (rows !! (TUI.height `div` 2 + 1))) == "⬜🌊\x3000",
       testCase "Replay map transitions through the save file" $
         withSaveFile $ \path -> do
           let (arrived, events) = Engine.step warpState Input.Up
