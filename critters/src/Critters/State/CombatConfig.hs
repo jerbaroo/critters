@@ -1,7 +1,7 @@
 module Critters.State.CombatConfig (CombatConfig (..), defaultCombat) where
 
-import Autodocodec qualified as Codec
 import Autodocodec (Autodocodec (..), HasCodec)
+import Autodocodec qualified as Codec
 import Critters.Formula qualified as Formula
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.BattleDefinition (BattleDefinition)
@@ -40,25 +40,30 @@ data CombatConfig = CombatConfig
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec CombatConfig)
 
 defaultCombat :: CombatConfig
-defaultCombat = CombatConfig
-  { configBattles = Map.empty,
-    configEncounters = [],
-    configItems = Map.empty,
-    configMoves = Map.empty,
-    configRules = defaultRules,
-    configSpecies = Map.empty,
-    configStatuses = Map.empty
-  }
+defaultCombat =
+  CombatConfig
+    { configBattles = Map.empty,
+      configEncounters = [],
+      configItems = Map.empty,
+      configMoves = Map.empty,
+      configRules = defaultRules,
+      configSpecies = Map.empty,
+      configStatuses = Map.empty
+    }
 
 instance HasCodec CombatConfig where
-  codec = Codec.bimapCodec validate id $ Codec.object "CombatConfig" $ CombatConfig
-    <$> Codec.optionalFieldWithOmittedDefault "battles" (Map.empty) "Named, scripted or encounter battles." Codec..= configBattles
-    <*> Codec.optionalFieldWithOmittedDefault "encounters" ([]) "Encounter tables." Codec..= configEncounters
-    <*> Codec.optionalFieldWithOmittedDefault "items" (Map.empty) "Battle item definitions." Codec..= configItems
-    <*> Codec.optionalFieldWithOmittedDefault "moves" (Map.empty) "Move definitions." Codec..= configMoves
-    <*> Codec.optionalFieldWithOmittedDefault "rules" (defaultRules) "Game-defined combat and progression rules." Codec..= configRules
-    <*> Codec.optionalFieldWithOmittedDefault "species" (Map.empty) "Species stats, affinities and learnsets." Codec..= configSpecies
-    <*> Codec.optionalFieldWithOmittedDefault "statuses" (Map.empty) "Persistent status definitions." Codec..= configStatuses
+  codec =
+    Codec.named "CombatConfig"
+      $ Codec.bimapCodec validate id
+      $ Codec.object "CombatConfig"
+      $ CombatConfig
+        <$> Codec.optionalFieldWithOmittedDefault "battles" (Map.empty) "Named, scripted or encounter battles." Codec..= configBattles
+        <*> Codec.optionalFieldWithOmittedDefault "encounters" ([]) "Encounter tables." Codec..= configEncounters
+        <*> Codec.optionalFieldWithOmittedDefault "items" (Map.empty) "Battle item definitions." Codec..= configItems
+        <*> Codec.optionalFieldWithOmittedDefault "moves" (Map.empty) "Move definitions." Codec..= configMoves
+        <*> Codec.optionalFieldWithOmittedDefault "rules" (defaultRules) "Game-defined combat and progression rules." Codec..= configRules
+        <*> Codec.optionalFieldWithOmittedDefault "species" (Map.empty) "Species stats, affinities and learnsets." Codec..= configSpecies
+        <*> Codec.optionalFieldWithOmittedDefault "statuses" (Map.empty) "Persistent status definitions." Codec..= configStatuses
     where
       validate value
         | any (Text.null . Text.strip) (Map.keys (configBattles value) <> Map.keys (configItems value) <> Map.keys (configSpecies value) <> Map.keys (configStatuses value)) = Left "Combat identifiers must not be blank."

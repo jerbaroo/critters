@@ -23,7 +23,8 @@ data Critter = Critter
 
 instance HasCodec Critter where
   codec =
-    Codec.bimapCodec validate id
+    Codec.named "Critter"
+      $ Codec.bimapCodec validate id
       $ Codec.object "Critter"
       $ Critter
         <$> Codec.optionalFieldWithOmittedDefault "battle" defaultProfile "Persistent battle data." Codec..= battleProfile

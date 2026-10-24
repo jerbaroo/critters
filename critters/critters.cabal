@@ -99,6 +99,7 @@ library
         Critters.Pretty
         Critters.Run
         Critters.Save
+        Critters.Schema
         Critters.State
         Critters.State.ActiveInteraction
         Critters.State.Affliction
@@ -145,6 +146,7 @@ library
     build-depends:
         aeson,
         autodocodec,
+        autodocodec-schema,
         base,
         bytestring,
         containers,
@@ -186,6 +188,17 @@ executable critters-docs
         critters,
         text
     hs-source-dirs:   app
+
+executable critters-schema
+    import:           settings
+    main-is:          Schema.hs
+    build-depends:
+        aeson-pretty,
+        base,
+        bytestring,
+        critters
+    hs-source-dirs:   app
+
 test-suite critters-test
     -- Import common compiler settings.
     import:           settings
@@ -195,6 +208,7 @@ test-suite critters-test
         BattlePersistenceTests
         BattleTests
         InteractionTests
+        SchemaTests
 
     -- The interface type and version of the test suite.
     type:             exitcode-stdio-1.0
@@ -208,6 +222,7 @@ test-suite critters-test
     -- Test dependencies.
     build-depends:
         aeson,
+        autodocodec-schema,
         autodocodec-yaml,
         base,
         containers,

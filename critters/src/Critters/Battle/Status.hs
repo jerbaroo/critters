@@ -61,11 +61,12 @@ applyEffect actor damage effect = do
     InflictStatus target identifier -> case (Common.active (destination target) context, Map.lookup identifier (Config.configStatuses (battleConfig (contextBattle context)))) of
       (Just critter, Just definition) | Common.usable critter && not (isJust (Profile.profileStatus (Critter.battleProfile critter))) -> do
         let affinities = maybe [] Species.speciesAffinities (Map.lookup (Critter.species critter) (Config.configSpecies (battleConfig (contextBattle context))))
-        if any (`elem` Status.statusImmuneAffinities definition) affinities then Common.emit "The status had no effect."
-        else do
-          duration <- if Status.statusDurationMax definition == 0 then pure Nothing else Just <$> Common.chooseInt (Status.statusDurationMin definition) (Status.statusDurationMax definition)
-          Common.modifyActive (destination target) (\value -> value{Critter.battleProfile = (Critter.battleProfile value){Profile.profileStatus = Just (Affliction duration identifier)}})
-          Common.emit (Critter.species critter <> " is affected by " <> identifier <> ".")
+        if any (`elem` Status.statusImmuneAffinities definition) affinities
+          then Common.emit "The status had no effect."
+          else do
+            duration <- if Status.statusDurationMax definition == 0 then pure Nothing else Just <$> Common.chooseInt (Status.statusDurationMin definition) (Status.statusDurationMax definition)
+            Common.modifyActive (destination target) (\value -> value{Critter.battleProfile = (Critter.battleProfile value){Profile.profileStatus = Just (Affliction duration identifier)}})
+            Common.emit (Critter.species critter <> " is affected by " <> identifier <> ".")
       _ -> pure ()
   where
     destination Self = actor
@@ -80,11 +81,12 @@ beforeAction side = do
       Nothing -> pure True
       Just definition -> do
         cured <- Common.chance (Status.statusCureChance definition)
-        if cured then do
-          Common.modifyActive side (\critter -> critter{Critter.battleProfile = (Critter.battleProfile critter){Profile.profileStatus = Nothing}})
-          Common.emit ("Recovered from " <> afflictionStatus affliction <> ".")
-          pure True
-        else do
-          blocked <- Common.chance (Status.statusBlockChance definition)
-          when blocked (Common.emit ("Unable to act because of " <> afflictionStatus affliction <> "."))
-          pure (not blocked)
+        if cured
+          then do
+            Common.modifyActive side (\critter -> critter{Critter.battleProfile = (Critter.battleProfile critter){Profile.profileStatus = Nothing}})
+            Common.emit ("Recovered from " <> afflictionStatus affliction <> ".")
+            pure True
+          else do
+            blocked <- Common.chance (Status.statusBlockChance definition)
+            when blocked (Common.emit ("Unable to act because of " <> afflictionStatus affliction <> "."))
+            pure (not blocked)

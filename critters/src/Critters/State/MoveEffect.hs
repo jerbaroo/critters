@@ -23,13 +23,17 @@ data Target = Opponent | Self
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Target)
 
 instance HasCodec MoveEffect where
-  codec = Codec.named "MoveEffect" $ Codec.object "MoveEffect" $ Codec.discriminatedUnionCodec "type" encode $ HashMap.fromList
-    [ ("chance", ("Chance", Codec.mapToDecoder (uncurry Chance) chance)),
-      ("change-health", ("ChangeHealth", Codec.mapToDecoder (uncurry ChangeHealth) health)),
-      ("change-stage", ("ChangeStage", Codec.mapToDecoder (\(destination, stat, amount) -> ChangeStage destination stat amount) stage)),
-      ("clear-status", ("ClearStatus", Codec.mapToDecoder ClearStatus target)),
-      ("inflict-status", ("InflictStatus", Codec.mapToDecoder (uncurry InflictStatus) status))
-    ]
+  codec =
+    Codec.named "MoveEffect"
+      $ Codec.object "MoveEffect"
+      $ Codec.discriminatedUnionCodec "type" encode
+      $ HashMap.fromList
+        [ ("chance", ("Chance", Codec.mapToDecoder (uncurry Chance) chance)),
+          ("change-health", ("ChangeHealth", Codec.mapToDecoder (uncurry ChangeHealth) health)),
+          ("change-stage", ("ChangeStage", Codec.mapToDecoder (\(destination, stat, amount) -> ChangeStage destination stat amount) stage)),
+          ("clear-status", ("ClearStatus", Codec.mapToDecoder ClearStatus target)),
+          ("inflict-status", ("InflictStatus", Codec.mapToDecoder (uncurry InflictStatus) status))
+        ]
     where
       chance :: JSONObjectCodec (Double, MoveEffect)
       chance = (,) <$> Codec.requiredFieldWith "probability" NumberCodec.probabilityCodec "Probability from zero to one." Codec..= fst <*> Codec.requiredField "effect" "The conditional effect." Codec..= snd

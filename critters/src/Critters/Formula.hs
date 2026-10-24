@@ -74,11 +74,12 @@ parse (Formula source) = case P.readP_to_S (spaces *> comparison <* P.eof) (from
     arguments = P.between (symbol "(") (symbol ")") (P.sepBy comparison (symbol ","))
     atom =
       P.between (symbol "(") (symbol ")") comparison
-        P.<++ (do
-          remaining <- P.look
-          case remaining of
-            first : _ | isDigit first -> Number <$> lexeme (P.readS_to_P (reads :: ReadS Double))
-            _ -> P.pfail)
+        P.<++ ( do
+                  remaining <- P.look
+                  case remaining of
+                    first : _ | isDigit first -> Number <$> lexeme (P.readS_to_P (reads :: ReadS Double))
+                    _ -> P.pfail
+              )
         P.<++ do
           first <- P.satisfy (\value -> isAlpha value || value == '_')
           rest <- P.munch (\value -> isAlphaNum value || value == '_')

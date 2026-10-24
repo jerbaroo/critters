@@ -1,7 +1,7 @@
 module Critters.Battle.Engine (beginBattle, commandFor, completionEffects, eventsFor) where
 
-import Critters.Battle.Common qualified as Common
 import Critters.Battle.Common (Context (..))
+import Critters.Battle.Common qualified as Common
 import Critters.Battle.Menu qualified as Menu
 import Critters.Battle.Turn qualified as Turn
 import Critters.Command (Command (..))
@@ -29,20 +29,24 @@ beginBattle state identifier
       definition <- maybe (Left "That battle is not defined.") Right (Map.lookup identifier (Config.configBattles (combat state)))
       player <- maybe (Left "You need a conscious critter to battle.") Right (findIndex Common.usable (Party.members (party state)))
       opponent <- maybe (Left "There are no conscious opponents.") Right (findIndex Common.usable (Definition.definitionOpponents definition))
-      if length (Definition.definitionOpponents definition) > maxPartySize state then Left "Opposing party exceeds the game party limit."
-      else if all (Common.validCritter (combat state)) (Party.members (party state) <> Definition.definitionOpponents definition)
-        then Right defaultBattle
-          { battleActiveOpponent = opponent,
-            battleActivePlayer = player,
-            battleConfig = combat state,
-            battleDefinition = definition,
-            battleInitialSeed = Just (randomSeed state),
-            battleMessages = [Definition.definitionName definition],
-            battleOpponentParty = Definition.definitionOpponents definition,
-            battleParticipants = [player],
-            battleRewardedOpponents = [index | (index, critter) <- zip [0 ..] (Definition.definitionOpponents definition), not (Common.usable critter)]
-          }
-        else Left "A participant has an invalid species, move, status, resource count or level."
+      if length (Definition.definitionOpponents definition) > maxPartySize state
+        then Left "Opposing party exceeds the game party limit."
+        else
+          if all (Common.validCritter (combat state)) (Party.members (party state) <> Definition.definitionOpponents definition)
+            then
+              Right
+                defaultBattle
+                  { battleActiveOpponent = opponent,
+                    battleActivePlayer = player,
+                    battleConfig = combat state,
+                    battleDefinition = definition,
+                    battleInitialSeed = Just (randomSeed state),
+                    battleMessages = [Definition.definitionName definition],
+                    battleOpponentParty = Definition.definitionOpponents definition,
+                    battleParticipants = [player],
+                    battleRewardedOpponents = [index | (index, critter) <- zip [0 ..] (Definition.definitionOpponents definition), not (Common.usable critter)]
+                  }
+            else Left "A participant has an invalid species, move, status, resource count or level."
 
 commandFor :: Input -> Maybe Command
 commandFor = \case

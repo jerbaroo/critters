@@ -1,10 +1,38 @@
 -- | Pure battle operations shared by turn resolution, menus and encounters.
 module Critters.Battle.Common
-  ( active, activeIndex, allCritters, availableMoves, baseStat, changedEvents, chance,
-    chooseInt, chooseWeighted, Context (..), contextFor, displayName, emit, endBattle, evaluate, healParty, knownMoves,
-    modifyActive, modifyAt, moveRemaining, opposite, randomUnit, rulesFor,
-    setCritter, setStage, Side (..), stageFactor, stat, statsFor, usable, validCritter
-  ) where
+  ( active,
+    activeIndex,
+    allCritters,
+    availableMoves,
+    baseStat,
+    changedEvents,
+    chance,
+    chooseInt,
+    chooseWeighted,
+    Context (..),
+    contextFor,
+    displayName,
+    emit,
+    endBattle,
+    evaluate,
+    healParty,
+    knownMoves,
+    modifyActive,
+    modifyAt,
+    moveRemaining,
+    opposite,
+    randomUnit,
+    rulesFor,
+    setCritter,
+    setStage,
+    Side (..),
+    stageFactor,
+    stat,
+    statsFor,
+    usable,
+    validCritter,
+  )
+where
 
 import Control.Monad.Trans.State.Strict (State)
 import Control.Monad.Trans.State.Strict qualified as State
@@ -127,10 +155,11 @@ emit message = State.modify $ \context -> context{contextBattle = (contextBattle
 
 endBattle :: BattleOutcome -> State Context ()
 endBattle outcome = do
-  State.modify $ \context -> context
-    { contextBattle = (contextBattle context){battleOutcome = Just outcome, battlePhase = Finished, battleSelected = 0},
-      contextParty = if outcome == Defeat then healParty (Rules.rulesDefeatRecovery (rulesFor context)) (contextParty context) else contextParty context
-    }
+  State.modify $ \context ->
+    context
+      { contextBattle = (contextBattle context){battleOutcome = Just outcome, battlePhase = Finished, battleSelected = 0},
+        contextParty = if outcome == Defeat then healParty (Rules.rulesDefeatRecovery (rulesFor context)) (contextParty context) else contextParty context
+      }
   emit $ case outcome of
     Captured -> "Capture complete."
     Defeat -> "Defeat."
@@ -145,10 +174,11 @@ healParty fraction (Party critters)
   | fraction <= 0 = Party critters
   | otherwise = Party (map recover critters)
   where
-    recover critter = critter
-      { Critter.hitPoints = max (Critter.hitPoints critter) (max 1 (min (Critter.maxHitPoints critter) (integer (number (Critter.maxHitPoints critter) * fraction)))),
-        Critter.battleProfile = (Critter.battleProfile critter){Profile.profileRemainingUses = Map.empty, Profile.profileStatus = Nothing}
-      }
+    recover critter =
+      critter
+        { Critter.hitPoints = max (Critter.hitPoints critter) (max 1 (min (Critter.maxHitPoints critter) (integer (number (Critter.maxHitPoints critter) * fraction)))),
+          Critter.battleProfile = (Critter.battleProfile critter){Profile.profileRemainingUses = Map.empty, Profile.profileStatus = Nothing}
+        }
 
 knownMoves :: Battle -> Critter -> [MoveId]
 knownMoves current critter = limit $ nub $ case Profile.profileKnownMoves (Critter.battleProfile critter) of

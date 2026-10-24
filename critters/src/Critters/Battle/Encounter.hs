@@ -42,17 +42,18 @@ eventsForStep state
     eligible table = Encounter.encounterChance table > 0 && Encounter.encounterMapId table == playerMap state && maybe False (`elem` Encounter.encounterTiles table) (tileAt (world state) (playerPosition state))
     select table = do
       triggered <- Common.chance (Encounter.encounterChance table)
-      if not triggered then pure Nothing
-      else do
-        chosen <- Common.chooseWeighted [(entry, Entry.entryWeight entry) | entry <- Encounter.encounterEntries table]
-        case chosen of
-          Nothing -> pure Nothing
-          Just entry -> case BattleEngine.beginBattle state (Entry.entryBattle entry) of
-            Left _ -> pure Nothing
-            Right active -> do
-              opponents <- traverse (vary entry) (battleOpponentParty active)
-              seed <- State.gets contextSeed
-              pure (Just active{battleInitialSeed = Just seed, battleOpponentParty = opponents})
+      if not triggered
+        then pure Nothing
+        else do
+          chosen <- Common.chooseWeighted [(entry, Entry.entryWeight entry) | entry <- Encounter.encounterEntries table]
+          case chosen of
+            Nothing -> pure Nothing
+            Just entry -> case BattleEngine.beginBattle state (Entry.entryBattle entry) of
+              Left _ -> pure Nothing
+              Right active -> do
+                opponents <- traverse (vary entry) (battleOpponentParty active)
+                seed <- State.gets contextSeed
+                pure (Just active{battleInitialSeed = Just seed, battleOpponentParty = opponents})
     steps = if encounterSteps state == maxBound then maxBound else encounterSteps state + 1
 
 vary :: EncounterEntry -> Critter -> State Context Critter

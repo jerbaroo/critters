@@ -19,8 +19,9 @@ data Interaction = Interaction
 
 instance HasCodec Interaction where
   codec =
-    Codec.object "Interaction" $
-      Interaction
+    Codec.named "Interaction"
+      $ Codec.object "Interaction"
+      $ Interaction
         <$> Codec.optionalFieldWithOmittedDefault "choices" [] "Choices offered after the dialogue." Codec..= interactionChoices
         <*> Codec.optionalFieldWithOmittedDefault "conditions" [] "All conditions must hold; the first matching interaction is used." Codec..= interactionConditions
         <*> Codec.optionalFieldWithOmittedDefault "dialogue" [] "Dialogue lines in order." Codec..= interactionDialogue

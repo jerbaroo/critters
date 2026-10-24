@@ -1,0 +1,2682 @@
+{
+  "$comment": "GameState",
+  "$defs": {
+    "BattleDefinition": {
+      "$comment": "BattleDefinition",
+      "properties": {
+        "allowCapture": {
+          "$comment": "Permit capture attempts.",
+          "type": "boolean"
+        },
+        "allowEscape": {
+          "$comment": "Permit escape attempts.",
+          "type": "boolean"
+        },
+        "captureEffects": {
+          "$comment": "Effects after a capture ends the battle.",
+          "items": {
+            "$ref": "#/$defs/Effect"
+          },
+          "type": "array"
+        },
+        "defeatEffects": {
+          "$comment": "Effects after defeat.",
+          "items": {
+            "$ref": "#/$defs/Effect"
+          },
+          "type": "array"
+        },
+        "escapeEffects": {
+          "$comment": "Effects after escaping.",
+          "items": {
+            "$ref": "#/$defs/Effect"
+          },
+          "type": "array"
+        },
+        "name": {
+          "$comment": "Battle title.",
+          "type": "string"
+        },
+        "opponentPolicy": {
+          "$comment": "Opponent policy: first, random or strongest.",
+          "type": "string"
+        },
+        "opponents": {
+          "$comment": "Opposing party.",
+          "items": {
+            "$ref": "#/$defs/Critter"
+          },
+          "type": "array"
+        },
+        "victoryEffects": {
+          "$comment": "Effects after victory.",
+          "items": {
+            "$ref": "#/$defs/Effect"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "CombatConfig": {
+      "$comment": "CombatConfig",
+      "properties": {
+        "battles": {
+          "$comment": "Named, scripted or encounter battles.",
+          "additionalProperties": {
+            "$ref": "#/$defs/BattleDefinition"
+          },
+          "type": "object"
+        },
+        "encounters": {
+          "$comment": "Encounter tables.",
+          "items": {
+            "$comment": "Encounter",
+            "properties": {
+              "chance": {
+                "$comment": "Probability per eligible movement step.\nFiniteDouble"
+              },
+              "entries": {
+                "$comment": "Weighted encounter choices.",
+                "items": {
+                  "$comment": "EncounterEntry",
+                  "properties": {
+                    "battle": {
+                      "$comment": "Configured battle identifier.",
+                      "type": "string"
+                    },
+                    "maxLevel": {
+                      "$comment": "Optional maximum generated opponent level.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "minLevel": {
+                      "$comment": "Optional minimum generated opponent level.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "weight": {
+                      "$comment": "Positive selection weight.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "battle"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "mapId": {
+                "$comment": "Map containing the encounter area.",
+                "type": "string"
+              },
+              "minimumSteps": {
+                "$comment": "Minimum eligible movement steps between encounters.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "tiles": {
+                "$comment": "Terrain eligible for this table.",
+                "items": {
+                  "oneOf": [
+                    {
+                      "const": "arena"
+                    },
+                    {
+                      "const": "clinic"
+                    },
+                    {
+                      "const": "door"
+                    },
+                    {
+                      "const": "fence"
+                    },
+                    {
+                      "const": "flowers"
+                    },
+                    {
+                      "const": "grass"
+                    },
+                    {
+                      "const": "ground"
+                    },
+                    {
+                      "const": "house"
+                    },
+                    {
+                      "const": "laboratory"
+                    },
+                    {
+                      "const": "ledge-east"
+                    },
+                    {
+                      "const": "ledge-north"
+                    },
+                    {
+                      "const": "ledge-south"
+                    },
+                    {
+                      "const": "ledge-west"
+                    },
+                    {
+                      "const": "path"
+                    },
+                    {
+                      "const": "rock"
+                    },
+                    {
+                      "const": "sand"
+                    },
+                    {
+                      "const": "shop"
+                    },
+                    {
+                      "const": "sign"
+                    },
+                    {
+                      "const": "stairs"
+                    },
+                    {
+                      "const": "tall-grass"
+                    },
+                    {
+                      "const": "tree"
+                    },
+                    {
+                      "const": "wall"
+                    },
+                    {
+                      "const": "water"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "mapId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "items": {
+          "$comment": "Battle item definitions.",
+          "additionalProperties": {
+            "$comment": "Item",
+            "properties": {
+              "captureBonus": {
+                "$comment": "Positive values mark a capture item and scale capture probability.\nFiniteDouble"
+              },
+              "cureStatus": {
+                "$comment": "Clear a persistent status.",
+                "type": "boolean"
+              },
+              "healing": {
+                "$comment": "Flat HP restored to a conscious target.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "healthFraction": {
+                "$comment": "Additional maximum HP fraction restored.\nFiniteDouble"
+              },
+              "name": {
+                "$comment": "Display name.",
+                "type": "string"
+              },
+              "restoreUses": {
+                "$comment": "Uses restored to each known move.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "reviveFraction": {
+                "$comment": "HP fraction restored to a fainted target.\nFiniteDouble"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "moves": {
+          "$comment": "Move definitions.",
+          "additionalProperties": {
+            "$comment": "Move",
+            "properties": {
+              "accuracy": {
+                "$comment": "Hit probability before game rules.\nFiniteDouble"
+              },
+              "affinity": {
+                "$comment": "Game-defined affinity.",
+                "type": "string"
+              },
+              "attackStat": {
+                "$comment": "Offensive stat identifier.",
+                "type": "string"
+              },
+              "criticalRate": {
+                "$comment": "Critical probability before game rules.\nFiniteDouble"
+              },
+              "defenseStat": {
+                "$comment": "Defensive stat identifier.",
+                "type": "string"
+              },
+              "effects": {
+                "$comment": "Additional move effects.",
+                "items": {
+                  "$ref": "#/$defs/MoveEffect"
+                },
+                "type": "array"
+              },
+              "hitWeights": {
+                "$comment": "Optional per-hit-count weights, overriding uniform selection.",
+                "additionalProperties": {
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "maxHits": {
+                "$comment": "Maximum hits.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "maxUses": {
+                "$comment": "Uses per full recovery; zero means unlimited.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "minHits": {
+                "$comment": "Minimum hits.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "name": {
+                "$comment": "Display name.",
+                "type": "string"
+              },
+              "power": {
+                "$comment": "Nonnegative base power.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "priority": {
+                "$comment": "Higher values act first.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "rules": {
+          "$comment": "Game-defined combat and progression rules.\nRules",
+          "properties": {
+            "accuracyFormula": {
+              "$comment": "Hit probability; the result is clamped to zero through one.",
+              "type": "string"
+            },
+            "accuracyPerHit": {
+              "$comment": "Roll accuracy for each hit rather than once per move.",
+              "type": "boolean"
+            },
+            "accuracyStageFormula": {
+              "$comment": "Accuracy and evasion stage multiplier.",
+              "type": "string"
+            },
+            "affinityChart": {
+              "$comment": "Attack affinity to defending affinity multipliers.",
+              "additionalProperties": {
+                "additionalProperties": {
+                  "$comment": "FiniteDouble"
+                },
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "aiScoreFormula": {
+              "$comment": "Score used by the strongest opponent policy.",
+              "type": "string"
+            },
+            "captureFormula": {
+              "$comment": "Capture probability; the result is clamped to zero through one.",
+              "type": "string"
+            },
+            "captureGivesExperience": {
+              "$comment": "Whether a successful capture grants experience.",
+              "type": "boolean"
+            },
+            "criticalFormula": {
+              "$comment": "Critical probability.",
+              "type": "string"
+            },
+            "criticalIgnoresStages": {
+              "$comment": "Ignore attack and defense stages on critical hits.",
+              "type": "boolean"
+            },
+            "criticalMultiplierFormula": {
+              "$comment": "Critical damage multiplier.",
+              "type": "string"
+            },
+            "criticalPerHit": {
+              "$comment": "Roll critical chance independently for each hit.",
+              "type": "boolean"
+            },
+            "damageFormula": {
+              "$comment": "Damage expression; affinity immunity still prevents damage.",
+              "type": "string"
+            },
+            "defeatRecovery": {
+              "$comment": "Fraction of maximum health restored after defeat.\nFiniteDouble"
+            },
+            "encountersAfterWarp": {
+              "$comment": "Allow encounter checks at warp destinations.",
+              "type": "boolean"
+            },
+            "escapeFormula": {
+              "$comment": "Escape probability.",
+              "type": "string"
+            },
+            "escapePriority": {
+              "$comment": "Action priority for escape attempts.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "experienceForFainted": {
+              "$comment": "Allow fainted recipients to gain experience.",
+              "type": "boolean"
+            },
+            "experienceFormula": {
+              "$comment": "Total experience threshold for a level.",
+              "type": "string"
+            },
+            "experienceRewardFormula": {
+              "$comment": "Experience per eligible party member.",
+              "type": "string"
+            },
+            "experienceSharing": {
+              "$comment": "Experience recipients: participants or party.",
+              "type": "string"
+            },
+            "fallbackMove": {
+              "$comment": "Action used when no learned move has remaining uses.\nMove",
+              "properties": {
+                "accuracy": {
+                  "$comment": "Hit probability before game rules.\nFiniteDouble"
+                },
+                "affinity": {
+                  "$comment": "Game-defined affinity.",
+                  "type": "string"
+                },
+                "attackStat": {
+                  "$comment": "Offensive stat identifier.",
+                  "type": "string"
+                },
+                "criticalRate": {
+                  "$comment": "Critical probability before game rules.\nFiniteDouble"
+                },
+                "defenseStat": {
+                  "$comment": "Defensive stat identifier.",
+                  "type": "string"
+                },
+                "effects": {
+                  "$comment": "Additional move effects.",
+                  "items": {
+                    "$ref": "#/$defs/MoveEffect"
+                  },
+                  "type": "array"
+                },
+                "hitWeights": {
+                  "$comment": "Optional per-hit-count weights, overriding uniform selection.",
+                  "additionalProperties": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  },
+                  "type": "object"
+                },
+                "maxHits": {
+                  "$comment": "Maximum hits.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "maxUses": {
+                  "$comment": "Uses per full recovery; zero means unlimited.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "minHits": {
+                  "$comment": "Minimum hits.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "name": {
+                  "$comment": "Display name.",
+                  "type": "string"
+                },
+                "power": {
+                  "$comment": "Nonnegative base power.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "priority": {
+                  "$comment": "Higher values act first.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "healthFormula": {
+              "$comment": "Maximum health on level changes and generated encounters.",
+              "type": "string"
+            },
+            "itemPriority": {
+              "$comment": "Action priority for items.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "learningPolicy": {
+              "$comment": "Move overflow policy: keep-newest or keep-oldest.",
+              "type": "string"
+            },
+            "maxKnownMoves": {
+              "$comment": "Game-wide learned move limit.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "maxLevel": {
+              "$comment": "Game-wide level limit.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "minimumDamage": {
+              "$comment": "Minimum damage of a nonimmune damaging hit.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "randomDamageMax": {
+              "$comment": "Upper damage variance multiplier.\nFiniteDouble"
+            },
+            "randomDamageMin": {
+              "$comment": "Lower damage variance multiplier.\nFiniteDouble"
+            },
+            "resetStagesOnSwitch": {
+              "$comment": "Clear temporary stages when switching.",
+              "type": "boolean"
+            },
+            "sameAffinityBonus": {
+              "$comment": "Multiplier when a move matches an attacking affinity.\nFiniteDouble"
+            },
+            "simultaneousDefeatWins": {
+              "$comment": "Treat a simultaneous final faint as a victory.",
+              "type": "boolean"
+            },
+            "speedStat": {
+              "$comment": "Stat used to order actions.",
+              "type": "string"
+            },
+            "stageLimit": {
+              "$comment": "Absolute limit on temporary stat stages.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "stageMultiplierFormula": {
+              "$comment": "Temporary stat multiplier.",
+              "type": "string"
+            },
+            "statFormula": {
+              "$comment": "Combat stat calculated from its base value and level.",
+              "type": "string"
+            },
+            "statusCaptureBonuses": {
+              "$comment": "Capture multipliers keyed by status.",
+              "additionalProperties": {
+                "$comment": "FiniteDouble"
+              },
+              "type": "object"
+            },
+            "switchPriority": {
+              "$comment": "Action priority for a voluntary switch.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "tieBreak": {
+              "$comment": "Equal-speed order: player, opponent or random.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "species": {
+          "$comment": "Species stats, affinities and learnsets.",
+          "additionalProperties": {
+            "$comment": "Species",
+            "properties": {
+              "affinities": {
+                "$comment": "Game-defined affinities.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "captureRate": {
+                "$comment": "Base capture probability.\nFiniteDouble"
+              },
+              "experienceYield": {
+                "$comment": "Experience awarded by this species.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "learnset": {
+                "$comment": "Moves learned at each level.",
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              "name": {
+                "$comment": "Optional display name.",
+                "type": "string"
+              },
+              "stats": {
+                "$comment": "Positive base stats; move definitions choose stat identifiers.",
+                "additionalProperties": {
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "statuses": {
+          "$comment": "Persistent status definitions.",
+          "additionalProperties": {
+            "$comment": "StatusDefinition",
+            "properties": {
+              "blockChance": {
+                "$comment": "Chance to prevent acting.\nFiniteDouble"
+              },
+              "cureChance": {
+                "$comment": "Chance to recover before acting.\nFiniteDouble"
+              },
+              "damageFraction": {
+                "$comment": "Fraction of maximum HP lost per turn.\nFiniteDouble"
+              },
+              "durationMax": {
+                "$comment": "Maximum duration; both durations zero means persistent.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "durationMin": {
+                "$comment": "Minimum duration.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "immuneAffinities": {
+                "$comment": "Affinities immune to this status.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "$comment": "Display name.",
+                "type": "string"
+              },
+              "statMultipliers": {
+                "$comment": "Stat multipliers while afflicted.",
+                "additionalProperties": {
+                  "$comment": "FiniteDouble"
+                },
+                "type": "object"
+              },
+              "tickOnApply": {
+                "$comment": "Whether residual damage applies on the turn of infliction.",
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "Critter": {
+      "$comment": "Critter",
+      "properties": {
+        "battle": {
+          "$comment": "Persistent battle data.\nBattleProfile",
+          "properties": {
+            "experience": {
+              "$comment": "Total experience.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "knownMoves": {
+              "$comment": "Individually learned moves; empty derives the species learnset.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "remainingUses": {
+              "$comment": "Remaining uses; absent entries are fully restored.",
+              "additionalProperties": {
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "status": {
+              "$comment": "Persistent status.",
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$comment": "Affliction",
+                  "properties": {
+                    "remaining": {
+                      "$comment": "Remaining turns; absent means until cured.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "$comment": "Game-defined status identifier.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "hitPoints": {
+          "$comment": "Current HP, from zero to maxHitPoints inclusive.",
+          "maximum": 9223372036854775807,
+          "minimum": -9223372036854775808,
+          "type": "integer"
+        },
+        "level": {
+          "$comment": "The critter's positive level.",
+          "maximum": 9223372036854775807,
+          "minimum": -9223372036854775808,
+          "type": "integer"
+        },
+        "maxHitPoints": {
+          "$comment": "The critter's positive maximum HP.",
+          "maximum": 9223372036854775807,
+          "minimum": -9223372036854775808,
+          "type": "integer"
+        },
+        "species": {
+          "$comment": "A nonblank species identifier chosen by the game author.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "species",
+        "maxHitPoints",
+        "level",
+        "hitPoints"
+      ],
+      "type": "object"
+    },
+    "Effect": {
+      "$comment": "Effect",
+      "oneOf": [
+        {
+          "properties": {
+            "count": {
+              "$comment": "Positive item count.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "item": {
+              "$comment": "Game-defined item identifier.",
+              "type": "string"
+            },
+            "type": {
+              "const": "give-item"
+            }
+          },
+          "required": [
+            "type",
+            "count",
+            "item"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "battle": {
+              "$comment": "Game-defined battle identifier.",
+              "type": "string"
+            },
+            "type": {
+              "const": "start-battle"
+            }
+          },
+          "required": [
+            "type",
+            "battle"
+          ],
+          "type": "object"
+        },
+        {
+          "allOf": [
+            {
+              "type": "object"
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "heal-party"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "flag": {
+              "$comment": "The game-defined flag identifier.",
+              "type": "string"
+            },
+            "type": {
+              "const": "set-flag"
+            },
+            "value": {
+              "$comment": "The new flag value.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "type",
+            "value",
+            "flag"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "objectId": {
+              "$comment": "The world object to remove.",
+              "type": "string"
+            },
+            "type": {
+              "const": "remove-object"
+            }
+          },
+          "required": [
+            "type",
+            "objectId"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "critter": {
+              "$comment": "The critter to add to the party.",
+              "$ref": "#/$defs/Critter"
+            },
+            "type": {
+              "const": "give-critter"
+            }
+          },
+          "required": [
+            "type",
+            "critter"
+          ],
+          "type": "object"
+        }
+      ],
+      "type": "object"
+    },
+    "Interaction": {
+      "$comment": "Interaction",
+      "properties": {
+        "choices": {
+          "$comment": "Choices offered after the dialogue.",
+          "items": {
+            "$comment": "Choice",
+            "properties": {
+              "effects": {
+                "$comment": "Effects applied when this choice is confirmed.",
+                "items": {
+                  "$ref": "#/$defs/Effect"
+                },
+                "type": "array"
+              },
+              "label": {
+                "$comment": "The text displayed for this choice.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "label"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "conditions": {
+          "$comment": "All conditions must hold; the first matching interaction is used.",
+          "items": {
+            "$comment": "Condition",
+            "oneOf": [
+              {
+                "properties": {
+                  "flag": {
+                    "$comment": "The game-defined flag identifier.",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "flag"
+                  },
+                  "value": {
+                    "$comment": "The expected flag value; missing flags are false.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value",
+                  "flag"
+                ],
+                "type": "object"
+              }
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "dialogue": {
+          "$comment": "Dialogue lines in order.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "effects": {
+          "$comment": "Effects applied on completion, together with the confirmed choice's effects.",
+          "items": {
+            "$ref": "#/$defs/Effect"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "MoveEffect": {
+      "$comment": "MoveEffect",
+      "oneOf": [
+        {
+          "properties": {
+            "amount": {
+              "$comment": "Signed HP change; supports damage, hp and maxHP variables.",
+              "type": "string"
+            },
+            "target": {
+              "$comment": "The affected side.",
+              "oneOf": [
+                {
+                  "const": "opponent"
+                },
+                {
+                  "const": "self"
+                }
+              ]
+            },
+            "type": {
+              "const": "change-health"
+            }
+          },
+          "required": [
+            "type",
+            "amount"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "effect": {
+              "$comment": "The conditional effect.",
+              "$ref": "#/$defs/MoveEffect"
+            },
+            "probability": {
+              "$comment": "Probability from zero to one.\nFiniteDouble"
+            },
+            "type": {
+              "const": "chance"
+            }
+          },
+          "required": [
+            "type",
+            "effect",
+            "probability"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "status": {
+              "$comment": "The status identifier.",
+              "type": "string"
+            },
+            "target": {
+              "$comment": "The affected side.",
+              "oneOf": [
+                {
+                  "const": "opponent"
+                },
+                {
+                  "const": "self"
+                }
+              ]
+            },
+            "type": {
+              "const": "inflict-status"
+            }
+          },
+          "required": [
+            "type",
+            "status"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "amount": {
+              "$comment": "The stage change.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "stat": {
+              "$comment": "The stat identifier.",
+              "type": "string"
+            },
+            "target": {
+              "$comment": "The affected side.",
+              "oneOf": [
+                {
+                  "const": "opponent"
+                },
+                {
+                  "const": "self"
+                }
+              ]
+            },
+            "type": {
+              "const": "change-stage"
+            }
+          },
+          "required": [
+            "type",
+            "amount",
+            "stat"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "target": {
+              "$comment": "The affected side.",
+              "oneOf": [
+                {
+                  "const": "opponent"
+                },
+                {
+                  "const": "self"
+                }
+              ]
+            },
+            "type": {
+              "const": "clear-status"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ],
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "properties": {
+        "activeInteraction": {
+          "$comment": "Selected scripted interaction.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$comment": "ActiveInteraction",
+              "properties": {
+                "dialogueIndex": {
+                  "$comment": "The current dialogue line index.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "script": {
+                  "$comment": "The interaction selected when this conversation started.",
+                  "$ref": "#/$defs/Interaction"
+                },
+                "selectedChoice": {
+                  "$comment": "The selected choice index; absent while reading dialogue.",
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "script"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "battle": {
+          "$comment": "Active battle, including its configuration snapshot.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$comment": "Battle",
+              "properties": {
+                "activeOpponent": {
+                  "$comment": "Active opposing party index.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "activePlayer": {
+                  "$comment": "Active player party index.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "capturedOpponents": {
+                  "$comment": "Opponents captured during this battle.",
+                  "items": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "config": {
+                  "$comment": "Configuration snapshot selected at entry.",
+                  "$ref": "#/$defs/CombatConfig"
+                },
+                "definition": {
+                  "$comment": "Battle definition snapshot.",
+                  "$ref": "#/$defs/BattleDefinition"
+                },
+                "enemyStages": {
+                  "$comment": "Temporary opposing stat stages.",
+                  "additionalProperties": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  },
+                  "type": "object"
+                },
+                "escapeAttempts": {
+                  "$comment": "Failed escape attempts.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "initialSeed": {
+                  "$comment": "Random state at entry; absent in older histories.",
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "messages": {
+                  "$comment": "Messages from the most recent action.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "opponentParty": {
+                  "$comment": "Current opposing party.",
+                  "items": {
+                    "$ref": "#/$defs/Critter"
+                  },
+                  "type": "array"
+                },
+                "outcome": {
+                  "$comment": "Resolved outcome awaiting acknowledgement.",
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "oneOf": [
+                        {
+                          "const": "captured"
+                        },
+                        {
+                          "const": "defeat"
+                        },
+                        {
+                          "const": "escaped"
+                        },
+                        {
+                          "const": "victory"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "participants": {
+                  "$comment": "Player party indices that have participated.",
+                  "items": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "phase": {
+                  "$comment": "Current battle menu.",
+                  "oneOf": [
+                    {
+                      "const": "actions"
+                    },
+                    {
+                      "const": "finished"
+                    },
+                    {
+                      "const": "items"
+                    },
+                    {
+                      "const": "item-target"
+                    },
+                    {
+                      "const": "moves"
+                    },
+                    {
+                      "const": "replacement"
+                    },
+                    {
+                      "const": "switch"
+                    }
+                  ]
+                },
+                "playerStages": {
+                  "$comment": "Temporary player stat stages.",
+                  "additionalProperties": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  },
+                  "type": "object"
+                },
+                "rewardedOpponents": {
+                  "$comment": "Opponent indices whose experience has been resolved.",
+                  "items": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "selected": {
+                  "$comment": "Selected menu entry.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "selectedItem": {
+                  "$comment": "Item awaiting a party target.",
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "turn": {
+                  "$comment": "Completed turns.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "combat": {
+          "$comment": "Game-defined battle rules and content.",
+          "$ref": "#/$defs/CombatConfig"
+        },
+        "conversation": {
+          "$comment": "Active legacy conversation.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$comment": "Conversation",
+              "properties": {
+                "lineIndex": {
+                  "$comment": "Zero-based index of the current dialogue line.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "npcId": {
+                  "$comment": "The NPC being spoken to.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "npcId",
+                "lineIndex"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "encounterSteps": {
+          "$comment": "Eligible steps since the previous encounter.",
+          "maximum": 9223372036854775807,
+          "minimum": -9223372036854775808,
+          "type": "integer"
+        },
+        "flags": {
+          "$comment": "Named story flags; missing flags are false.",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "inventory": {
+          "$comment": "Item counts indexed by game-defined identifiers.",
+          "additionalProperties": {
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "maps": {
+          "$comment": "Tile maps indexed by stable identifiers.",
+          "additionalProperties": {
+            "$comment": "World",
+            "properties": {
+              "tiles": {
+                "$comment": "Rows from top to bottom (last row has y = 0); cells run left to right, with null for missing cells.",
+                "items": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "oneOf": [
+                          {
+                            "const": "arena"
+                          },
+                          {
+                            "const": "clinic"
+                          },
+                          {
+                            "const": "door"
+                          },
+                          {
+                            "const": "fence"
+                          },
+                          {
+                            "const": "flowers"
+                          },
+                          {
+                            "const": "grass"
+                          },
+                          {
+                            "const": "ground"
+                          },
+                          {
+                            "const": "house"
+                          },
+                          {
+                            "const": "laboratory"
+                          },
+                          {
+                            "const": "ledge-east"
+                          },
+                          {
+                            "const": "ledge-north"
+                          },
+                          {
+                            "const": "ledge-south"
+                          },
+                          {
+                            "const": "ledge-west"
+                          },
+                          {
+                            "const": "path"
+                          },
+                          {
+                            "const": "rock"
+                          },
+                          {
+                            "const": "sand"
+                          },
+                          {
+                            "const": "shop"
+                          },
+                          {
+                            "const": "sign"
+                          },
+                          {
+                            "const": "stairs"
+                          },
+                          {
+                            "const": "tall-grass"
+                          },
+                          {
+                            "const": "tree"
+                          },
+                          {
+                            "const": "wall"
+                          },
+                          {
+                            "const": "water"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "warps": {
+                "$comment": "Position-based transitions to other maps.",
+                "items": {
+                  "$comment": "Warp",
+                  "properties": {
+                    "destination": {
+                      "$comment": "Where the player arrives.\nLocation",
+                      "properties": {
+                        "mapId": {
+                          "$comment": "The map identifier.",
+                          "type": "string"
+                        },
+                        "position": {
+                          "$comment": "Coordinates within that map.\nPosition",
+                          "properties": {
+                            "x": {
+                              "$comment": "Zero-based column, increasing to the right.",
+                              "maximum": 9223372036854775807,
+                              "minimum": -9223372036854775808,
+                              "type": "integer"
+                            },
+                            "y": {
+                              "$comment": "Zero-based row from the bottom, increasing upwards.",
+                              "maximum": 9223372036854775807,
+                              "minimum": -9223372036854775808,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "y",
+                            "x"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "position",
+                        "mapId"
+                      ],
+                      "type": "object"
+                    },
+                    "entranceDirection": {
+                      "$comment": "Required movement direction when entering the source cell; omitted or null allows any direction.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "oneOf": [
+                            {
+                              "const": "east"
+                            },
+                            {
+                              "const": "north"
+                            },
+                            {
+                              "const": "south"
+                            },
+                            {
+                              "const": "west"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "source": {
+                      "$comment": "The cell that triggers this warp when entered.\nPosition",
+                      "properties": {
+                        "x": {
+                          "$comment": "Zero-based column, increasing to the right.",
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        "y": {
+                          "$comment": "Zero-based row from the bottom, increasing upwards.",
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "y",
+                        "x"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "destination"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "tiles"
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "maxPartySize": {
+          "$comment": "Positive game-wide party limit.",
+          "maximum": 9223372036854775807,
+          "minimum": -9223372036854775808,
+          "type": "integer"
+        },
+        "npcs": {
+          "$comment": "Stationary NPCs.",
+          "additionalProperties": {
+            "$comment": "Npc",
+            "anyOf": [
+              {
+                "properties": {
+                  "dialogue": {
+                    "$comment": "Legacy dialogue, used when interactions are absent.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "interactions": {
+                    "$comment": "Conditional interactions in priority order.",
+                    "items": {
+                      "$ref": "#/$defs/Interaction"
+                    },
+                    "type": "array"
+                  },
+                  "location": {
+                    "$comment": "The map and ground cell occupied by the NPC.\nLocation",
+                    "properties": {
+                      "mapId": {
+                        "$comment": "The map identifier.",
+                        "type": "string"
+                      },
+                      "position": {
+                        "$comment": "Coordinates within that map.\nPosition",
+                        "properties": {
+                          "x": {
+                            "$comment": "Zero-based column, increasing to the right.",
+                            "maximum": 9223372036854775807,
+                            "minimum": -9223372036854775808,
+                            "type": "integer"
+                          },
+                          "y": {
+                            "$comment": "Zero-based row from the bottom, increasing upwards.",
+                            "maximum": 9223372036854775807,
+                            "minimum": -9223372036854775808,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "y",
+                          "x"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "position",
+                      "mapId"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "location"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "dialogue": {
+                    "$comment": "Legacy dialogue lines in order.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "interactions": {
+                    "$comment": "Conditional interactions in priority order.",
+                    "items": {
+                      "$ref": "#/$defs/Interaction"
+                    },
+                    "type": "array"
+                  },
+                  "position": {
+                    "$comment": "Coordinates in the overworld.\nPosition",
+                    "properties": {
+                      "x": {
+                        "$comment": "Zero-based column, increasing to the right.",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      },
+                      "y": {
+                        "$comment": "Zero-based row from the bottom, increasing upwards.",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "y",
+                      "x"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "position"
+                ],
+                "type": "object"
+              }
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "objects": {
+          "$comment": "Interactable world objects.",
+          "additionalProperties": {
+            "$comment": "Object",
+            "properties": {
+              "glyph": {
+                "$comment": "The object's display marker.",
+                "type": "string"
+              },
+              "interactions": {
+                "$comment": "Conditional interactions in priority order.",
+                "items": {
+                  "$ref": "#/$defs/Interaction"
+                },
+                "type": "array"
+              },
+              "location": {
+                "$comment": "The map and cell occupied by the object.\nLocation",
+                "properties": {
+                  "mapId": {
+                    "$comment": "The map identifier.",
+                    "type": "string"
+                  },
+                  "position": {
+                    "$comment": "Coordinates within that map.\nPosition",
+                    "properties": {
+                      "x": {
+                        "$comment": "Zero-based column, increasing to the right.",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      },
+                      "y": {
+                        "$comment": "Zero-based row from the bottom, increasing upwards.",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "y",
+                      "x"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "position",
+                  "mapId"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "location",
+              "glyph"
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "party": {
+          "$comment": "Player party.\nParty",
+          "properties": {
+            "members": {
+              "$comment": "Critters in party order.",
+              "items": {
+                "$ref": "#/$defs/Critter"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "partyOpen": {
+          "$comment": "Whether the party view is open.",
+          "type": "boolean"
+        },
+        "playerDirection": {
+          "$comment": "Player facing direction.",
+          "oneOf": [
+            {
+              "const": "east"
+            },
+            {
+              "const": "north"
+            },
+            {
+              "const": "south"
+            },
+            {
+              "const": "west"
+            }
+          ]
+        },
+        "playerMap": {
+          "$comment": "The active map.",
+          "type": "string"
+        },
+        "playerPosition": {
+          "$comment": "Coordinates in the active map.\nPosition",
+          "properties": {
+            "x": {
+              "$comment": "Zero-based column, increasing to the right.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "y": {
+              "$comment": "Zero-based row from the bottom, increasing upwards.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "y",
+            "x"
+          ],
+          "type": "object"
+        },
+        "randomSeed": {
+          "$comment": "Reproducible random state, from zero through 2147483647.",
+          "maximum": 9223372036854775807,
+          "minimum": -9223372036854775808,
+          "type": "integer"
+        },
+        "version": {
+          "$comment": "Save format version.",
+          "const": 1
+        }
+      },
+      "required": [
+        "version",
+        "playerPosition",
+        "maps"
+      ],
+      "type": "object"
+    },
+    {
+      "allOf": [
+        {
+          "properties": {
+            "activeInteraction": {
+              "$comment": "Selected scripted interaction.",
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$comment": "ActiveInteraction",
+                  "properties": {
+                    "dialogueIndex": {
+                      "$comment": "The current dialogue line index.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    },
+                    "script": {
+                      "$comment": "The interaction selected when this conversation started.",
+                      "$ref": "#/$defs/Interaction"
+                    },
+                    "selectedChoice": {
+                      "$comment": "The selected choice index; absent while reading dialogue.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "script"
+                  ],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "battle": {
+              "$comment": "Active battle, including its configuration snapshot.",
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$comment": "Battle",
+                  "properties": {
+                    "activeOpponent": {
+                      "$comment": "Active opposing party index.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    },
+                    "activePlayer": {
+                      "$comment": "Active player party index.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    },
+                    "capturedOpponents": {
+                      "$comment": "Opponents captured during this battle.",
+                      "items": {
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "config": {
+                      "$comment": "Configuration snapshot selected at entry.",
+                      "$ref": "#/$defs/CombatConfig"
+                    },
+                    "definition": {
+                      "$comment": "Battle definition snapshot.",
+                      "$ref": "#/$defs/BattleDefinition"
+                    },
+                    "enemyStages": {
+                      "$comment": "Temporary opposing stat stages.",
+                      "additionalProperties": {
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      },
+                      "type": "object"
+                    },
+                    "escapeAttempts": {
+                      "$comment": "Failed escape attempts.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    },
+                    "initialSeed": {
+                      "$comment": "Random state at entry; absent in older histories.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "messages": {
+                      "$comment": "Messages from the most recent action.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "opponentParty": {
+                      "$comment": "Current opposing party.",
+                      "items": {
+                        "$ref": "#/$defs/Critter"
+                      },
+                      "type": "array"
+                    },
+                    "outcome": {
+                      "$comment": "Resolved outcome awaiting acknowledgement.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "oneOf": [
+                            {
+                              "const": "captured"
+                            },
+                            {
+                              "const": "defeat"
+                            },
+                            {
+                              "const": "escaped"
+                            },
+                            {
+                              "const": "victory"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "participants": {
+                      "$comment": "Player party indices that have participated.",
+                      "items": {
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "phase": {
+                      "$comment": "Current battle menu.",
+                      "oneOf": [
+                        {
+                          "const": "actions"
+                        },
+                        {
+                          "const": "finished"
+                        },
+                        {
+                          "const": "items"
+                        },
+                        {
+                          "const": "item-target"
+                        },
+                        {
+                          "const": "moves"
+                        },
+                        {
+                          "const": "replacement"
+                        },
+                        {
+                          "const": "switch"
+                        }
+                      ]
+                    },
+                    "playerStages": {
+                      "$comment": "Temporary player stat stages.",
+                      "additionalProperties": {
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      },
+                      "type": "object"
+                    },
+                    "rewardedOpponents": {
+                      "$comment": "Opponent indices whose experience has been resolved.",
+                      "items": {
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "selected": {
+                      "$comment": "Selected menu entry.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    },
+                    "selectedItem": {
+                      "$comment": "Item awaiting a party target.",
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "turn": {
+                      "$comment": "Completed turns.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "combat": {
+              "$comment": "Game-defined battle rules and content.",
+              "$ref": "#/$defs/CombatConfig"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "conversation": {
+              "$comment": "Active legacy conversation.",
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$comment": "Conversation",
+                  "properties": {
+                    "lineIndex": {
+                      "$comment": "Zero-based index of the current dialogue line.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    },
+                    "npcId": {
+                      "$comment": "The NPC being spoken to.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "npcId",
+                    "lineIndex"
+                  ],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "encounterSteps": {
+              "$comment": "Eligible steps since the previous encounter.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "flags": {
+              "$comment": "Named story flags; missing flags are false.",
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "inventory": {
+              "$comment": "Item counts indexed by game-defined identifiers.",
+              "additionalProperties": {
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "world": {
+              "$comment": "Legacy single map.\nWorld",
+              "properties": {
+                "tiles": {
+                  "$comment": "Rows from top to bottom (last row has y = 0); cells run left to right, with null for missing cells.",
+                  "items": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "oneOf": [
+                            {
+                              "const": "arena"
+                            },
+                            {
+                              "const": "clinic"
+                            },
+                            {
+                              "const": "door"
+                            },
+                            {
+                              "const": "fence"
+                            },
+                            {
+                              "const": "flowers"
+                            },
+                            {
+                              "const": "grass"
+                            },
+                            {
+                              "const": "ground"
+                            },
+                            {
+                              "const": "house"
+                            },
+                            {
+                              "const": "laboratory"
+                            },
+                            {
+                              "const": "ledge-east"
+                            },
+                            {
+                              "const": "ledge-north"
+                            },
+                            {
+                              "const": "ledge-south"
+                            },
+                            {
+                              "const": "ledge-west"
+                            },
+                            {
+                              "const": "path"
+                            },
+                            {
+                              "const": "rock"
+                            },
+                            {
+                              "const": "sand"
+                            },
+                            {
+                              "const": "shop"
+                            },
+                            {
+                              "const": "sign"
+                            },
+                            {
+                              "const": "stairs"
+                            },
+                            {
+                              "const": "tall-grass"
+                            },
+                            {
+                              "const": "tree"
+                            },
+                            {
+                              "const": "wall"
+                            },
+                            {
+                              "const": "water"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "type": "array"
+                },
+                "warps": {
+                  "$comment": "Position-based transitions to other maps.",
+                  "items": {
+                    "$comment": "Warp",
+                    "properties": {
+                      "destination": {
+                        "$comment": "Where the player arrives.\nLocation",
+                        "properties": {
+                          "mapId": {
+                            "$comment": "The map identifier.",
+                            "type": "string"
+                          },
+                          "position": {
+                            "$comment": "Coordinates within that map.\nPosition",
+                            "properties": {
+                              "x": {
+                                "$comment": "Zero-based column, increasing to the right.",
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              "y": {
+                                "$comment": "Zero-based row from the bottom, increasing upwards.",
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "y",
+                              "x"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "position",
+                          "mapId"
+                        ],
+                        "type": "object"
+                      },
+                      "entranceDirection": {
+                        "$comment": "Required movement direction when entering the source cell; omitted or null allows any direction.",
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "oneOf": [
+                              {
+                                "const": "east"
+                              },
+                              {
+                                "const": "north"
+                              },
+                              {
+                                "const": "south"
+                              },
+                              {
+                                "const": "west"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "source": {
+                        "$comment": "The cell that triggers this warp when entered.\nPosition",
+                        "properties": {
+                          "x": {
+                            "$comment": "Zero-based column, increasing to the right.",
+                            "maximum": 9223372036854775807,
+                            "minimum": -9223372036854775808,
+                            "type": "integer"
+                          },
+                          "y": {
+                            "$comment": "Zero-based row from the bottom, increasing upwards.",
+                            "maximum": 9223372036854775807,
+                            "minimum": -9223372036854775808,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "y",
+                          "x"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "destination"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "tiles"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "world"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "maxPartySize": {
+              "$comment": "Positive game-wide party limit.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "npcs": {
+              "$comment": "Stationary NPCs.",
+              "additionalProperties": {
+                "$comment": "Npc",
+                "anyOf": [
+                  {
+                    "properties": {
+                      "dialogue": {
+                        "$comment": "Legacy dialogue, used when interactions are absent.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "interactions": {
+                        "$comment": "Conditional interactions in priority order.",
+                        "items": {
+                          "$ref": "#/$defs/Interaction"
+                        },
+                        "type": "array"
+                      },
+                      "location": {
+                        "$comment": "The map and ground cell occupied by the NPC.\nLocation",
+                        "properties": {
+                          "mapId": {
+                            "$comment": "The map identifier.",
+                            "type": "string"
+                          },
+                          "position": {
+                            "$comment": "Coordinates within that map.\nPosition",
+                            "properties": {
+                              "x": {
+                                "$comment": "Zero-based column, increasing to the right.",
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              "y": {
+                                "$comment": "Zero-based row from the bottom, increasing upwards.",
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "y",
+                              "x"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "position",
+                          "mapId"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "location"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "properties": {
+                      "dialogue": {
+                        "$comment": "Legacy dialogue lines in order.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "interactions": {
+                        "$comment": "Conditional interactions in priority order.",
+                        "items": {
+                          "$ref": "#/$defs/Interaction"
+                        },
+                        "type": "array"
+                      },
+                      "position": {
+                        "$comment": "Coordinates in the overworld.\nPosition",
+                        "properties": {
+                          "x": {
+                            "$comment": "Zero-based column, increasing to the right.",
+                            "maximum": 9223372036854775807,
+                            "minimum": -9223372036854775808,
+                            "type": "integer"
+                          },
+                          "y": {
+                            "$comment": "Zero-based row from the bottom, increasing upwards.",
+                            "maximum": 9223372036854775807,
+                            "minimum": -9223372036854775808,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "y",
+                          "x"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "position"
+                    ],
+                    "type": "object"
+                  }
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "objects": {
+              "$comment": "Interactable world objects.",
+              "additionalProperties": {
+                "$comment": "Object",
+                "properties": {
+                  "glyph": {
+                    "$comment": "The object's display marker.",
+                    "type": "string"
+                  },
+                  "interactions": {
+                    "$comment": "Conditional interactions in priority order.",
+                    "items": {
+                      "$ref": "#/$defs/Interaction"
+                    },
+                    "type": "array"
+                  },
+                  "location": {
+                    "$comment": "The map and cell occupied by the object.\nLocation",
+                    "properties": {
+                      "mapId": {
+                        "$comment": "The map identifier.",
+                        "type": "string"
+                      },
+                      "position": {
+                        "$comment": "Coordinates within that map.\nPosition",
+                        "properties": {
+                          "x": {
+                            "$comment": "Zero-based column, increasing to the right.",
+                            "maximum": 9223372036854775807,
+                            "minimum": -9223372036854775808,
+                            "type": "integer"
+                          },
+                          "y": {
+                            "$comment": "Zero-based row from the bottom, increasing upwards.",
+                            "maximum": 9223372036854775807,
+                            "minimum": -9223372036854775808,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "y",
+                          "x"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "position",
+                      "mapId"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "location",
+                  "glyph"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "party": {
+              "$comment": "Player party.\nParty",
+              "properties": {
+                "members": {
+                  "$comment": "Critters in party order.",
+                  "items": {
+                    "$ref": "#/$defs/Critter"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "partyOpen": {
+              "$comment": "Whether the party view is open.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "playerDirection": {
+              "$comment": "Player facing direction.",
+              "oneOf": [
+                {
+                  "const": "east"
+                },
+                {
+                  "const": "north"
+                },
+                {
+                  "const": "south"
+                },
+                {
+                  "const": "west"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        {
+          "type": "object"
+        },
+        {
+          "properties": {
+            "playerPosition": {
+              "$comment": "Coordinates in the active map.\nPosition",
+              "properties": {
+                "x": {
+                  "$comment": "Zero-based column, increasing to the right.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "y": {
+                  "$comment": "Zero-based row from the bottom, increasing upwards.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "y",
+                "x"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "playerPosition"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "randomSeed": {
+              "$comment": "Reproducible random state, from zero through 2147483647.",
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "version": {
+              "$comment": "Save format version.",
+              "const": 1
+            }
+          },
+          "required": [
+            "version"
+          ],
+          "type": "object"
+        }
+      ],
+      "type": "object"
+    }
+  ],
+  "type": "object"
+}

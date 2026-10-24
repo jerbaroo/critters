@@ -8,6 +8,13 @@ repos:
         files: ^critters/.*\.(cabal|hs|hs-boot|hsig)$
         pass_filenames: false
         require_serial: true
+      - id: schema
+        name: Generate schema
+        entry: bash -c 'cd critters && exec cabal run -v0 critters-schema > schema.json'
+        language: system
+        files: ^critters/(.*\.(cabal|hs|hs-boot|hsig)|schema\.json)$
+        pass_filenames: false
+        require_serial: true
       - id: test
         name: Test
         entry: just test

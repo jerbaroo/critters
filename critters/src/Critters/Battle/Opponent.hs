@@ -32,12 +32,18 @@ chooseAction = do
     better context old next = if scoreMove context (snd next) > scoreMove context (snd old) then next else old
 
 scoreMove :: Context -> Move -> Double
-scoreMove context move = Common.evaluate 0 (Rules.rulesAiScoreFormula rules)
-  [ ("accuracy", max 0 (min 1 (Damage.accuracyFor context Enemy move))),
-    ("damage", min targetHealth (damage + extraDamage)), ("heal", healing),
-    ("hpRatio", health / max 1 maximumHealth), ("priority", number (Move.movePriority move)),
-    ("status", utility), ("targetHP", targetHealth)
-  ]
+scoreMove context move =
+  Common.evaluate
+    0
+    (Rules.rulesAiScoreFormula rules)
+    [ ("accuracy", max 0 (min 1 (Damage.accuracyFor context Enemy move))),
+      ("damage", min targetHealth (damage + extraDamage)),
+      ("heal", healing),
+      ("hpRatio", health / max 1 maximumHealth),
+      ("priority", number (Move.movePriority move)),
+      ("status", utility),
+      ("targetHP", targetHealth)
+    ]
   where
     criticalChance = max 0 (min 1 (Common.evaluate 0 (Rules.rulesCriticalFormula rules) [("criticalRate", Move.moveCriticalRate move), ("speed", Common.stat context Enemy (Rules.rulesSpeedStat rules)), ("level", level Enemy), ("targetLevel", level Player)]))
     criticalMultiplier = max 0 (Common.evaluate 1 (Rules.rulesCriticalMultiplierFormula rules) [("level", level Enemy), ("targetLevel", level Player)])

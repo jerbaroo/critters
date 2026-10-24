@@ -1,4 +1,6 @@
 .direnv/
 dist-newstyle/
+*.json*
+!critters/schema.json
 *_save_*
 *_logs

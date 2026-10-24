@@ -9,8 +9,8 @@ import Critters.State.Battle (Battle)
 import Critters.State.Battle qualified as Battle
 import Critters.State.CombatConfig (CombatConfig, defaultCombat)
 import Critters.State.CombatConfig qualified as Combat
-import Critters.State.Encounter qualified as Encounter
 import Critters.State.Conversation (Conversation (..))
+import Critters.State.Encounter qualified as Encounter
 import Critters.State.FlagId (FlagId)
 import Critters.State.Interaction qualified as Interaction
 import Critters.State.Location (Location (..))
@@ -127,25 +127,26 @@ instance HasCodec GameState where
     where
       current = fields (Codec.requiredField "maps" "Tile maps indexed by stable identifiers.") (Codec.optionalFieldWithOmittedDefault "playerMap" (MapId "overworld") "The active map.")
       fields :: JSONObjectCodec (Map MapId World) -> JSONObjectCodec MapId -> JSONObjectCodec GameState
-      fields layouts activeMap = GameState
-        <$> Codec.optionalFieldOrNull "activeInteraction" "Selected scripted interaction." Codec..= activeInteraction
-        <*> Codec.optionalFieldOrNull "battle" "Active battle, including its configuration snapshot." Codec..= battle
-        <*> Codec.optionalFieldWithOmittedDefault "combat" defaultCombat "Game-defined battle rules and content." Codec..= combat
-        <*> Codec.optionalFieldOrNull "conversation" "Active legacy conversation." Codec..= conversation
-        <*> Codec.optionalFieldWithOmittedDefault "encounterSteps" 0 "Eligible steps since the previous encounter." Codec..= encounterSteps
-        <*> Codec.optionalFieldWithOmittedDefault "flags" Map.empty "Named story flags; missing flags are false." Codec..= flags
-        <*> Codec.optionalFieldWithOmittedDefault "inventory" Map.empty "Item counts indexed by game-defined identifiers." Codec..= inventory
-        <*> layouts Codec..= maps
-        <*> Codec.optionalFieldWithOmittedDefault "maxPartySize" 6 "Positive game-wide party limit." Codec..= maxPartySize
-        <*> Codec.optionalFieldWithOmittedDefault "npcs" Map.empty "Stationary NPCs." Codec..= npcs
-        <*> Codec.optionalFieldWithOmittedDefault "objects" Map.empty "Interactable world objects." Codec..= objects
-        <*> Codec.optionalFieldWithOmittedDefault "party" Party.empty "Player party." Codec..= party
-        <*> Codec.optionalFieldWithOmittedDefault "partyOpen" False "Whether the party view is open." Codec..= partyOpen
-        <*> Codec.optionalFieldWithOmittedDefault "playerDirection" North "Player facing direction." Codec..= playerDirection
-        <*> activeMap Codec..= playerMap
-        <*> Codec.requiredField "playerPosition" "Coordinates in the active map." Codec..= playerPosition
-        <*> Codec.optionalFieldWithOmittedDefault "randomSeed" 1 "Reproducible random state, from zero through 2147483647." Codec..= randomSeed
-        <* Codec.requiredFieldWith "version" versionCodec "Save format version." Codec..= const 1
+      fields layouts activeMap =
+        GameState
+          <$> Codec.optionalFieldOrNull "activeInteraction" "Selected scripted interaction." Codec..= activeInteraction
+          <*> Codec.optionalFieldOrNull "battle" "Active battle, including its configuration snapshot." Codec..= battle
+          <*> Codec.optionalFieldWithOmittedDefault "combat" defaultCombat "Game-defined battle rules and content." Codec..= combat
+          <*> Codec.optionalFieldOrNull "conversation" "Active legacy conversation." Codec..= conversation
+          <*> Codec.optionalFieldWithOmittedDefault "encounterSteps" 0 "Eligible steps since the previous encounter." Codec..= encounterSteps
+          <*> Codec.optionalFieldWithOmittedDefault "flags" Map.empty "Named story flags; missing flags are false." Codec..= flags
+          <*> Codec.optionalFieldWithOmittedDefault "inventory" Map.empty "Item counts indexed by game-defined identifiers." Codec..= inventory
+          <*> layouts Codec..= maps
+          <*> Codec.optionalFieldWithOmittedDefault "maxPartySize" 6 "Positive game-wide party limit." Codec..= maxPartySize
+          <*> Codec.optionalFieldWithOmittedDefault "npcs" Map.empty "Stationary NPCs." Codec..= npcs
+          <*> Codec.optionalFieldWithOmittedDefault "objects" Map.empty "Interactable world objects." Codec..= objects
+          <*> Codec.optionalFieldWithOmittedDefault "party" Party.empty "Player party." Codec..= party
+          <*> Codec.optionalFieldWithOmittedDefault "partyOpen" False "Whether the party view is open." Codec..= partyOpen
+          <*> Codec.optionalFieldWithOmittedDefault "playerDirection" North "Player facing direction." Codec..= playerDirection
+          <*> activeMap Codec..= playerMap
+          <*> Codec.requiredField "playerPosition" "Coordinates in the active map." Codec..= playerPosition
+          <*> Codec.optionalFieldWithOmittedDefault "randomSeed" 1 "Reproducible random state, from zero through 2147483647." Codec..= randomSeed
+          <* Codec.requiredFieldWith "version" versionCodec "Save format version." Codec..= const 1
       legacy = fields (Codec.dimapCodec (Map.singleton (MapId "overworld")) (Map.findWithDefault (World [] []) (MapId "overworld")) (Codec.requiredField "world" "Legacy single map.")) (Codec.pureCodec (MapId "overworld"))
       validate state
         | maxPartySize state <= 0 = Left "maxPartySize must be positive."

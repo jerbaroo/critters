@@ -1,10 +1,10 @@
 module Critters.State.Rules (defaultRules, Rules (..)) where
 
-import Autodocodec qualified as Codec
 import Autodocodec (Autodocodec (..), HasCodec)
+import Autodocodec qualified as Codec
 import Critters.Codec qualified as NumberCodec
-import Critters.Formula qualified as Formula
 import Critters.Formula (Formula (..))
+import Critters.Formula qualified as Formula
 import Critters.Number (integer, number)
 import Critters.State.Move (Move, defaultMove)
 import Critters.State.Move qualified as Move
@@ -14,47 +14,48 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 
 defaultRules :: Rules
-defaultRules = Rules
-  { rulesAccuracyFormula = Formula "accuracy * accuracyStage / evasionStage",
-    rulesAccuracyPerHit = False,
-    rulesAccuracyStageFormula = Formula "if(stage >= 0, (3 + stage) / 3, 3 / (3 - stage))",
-    rulesAffinityChart = Map.empty,
-    rulesAiScoreFormula = Formula "damage * accuracy + heal * if(hpRatio < 0.4, 2, 0.2) + status * 2",
-    rulesCaptureFormula = Formula "rate * itemBonus * (1 - hp / (2 * maxHP)) * statusBonus",
-    rulesCaptureGivesExperience = False,
-    rulesCriticalFormula = Formula "criticalRate",
-    rulesCriticalIgnoresStages = False,
-    rulesCriticalMultiplierFormula = Formula "2",
-    rulesCriticalPerHit = True,
-    rulesDamageFormula = Formula "max(1, floor(power * attack / defense / 5 * critical * affinity * sameAffinity * variance))",
-    rulesDefeatRecovery = 1,
-    rulesEncountersAfterWarp = False,
-    rulesEscapeFormula = Formula "speed / max(1, enemySpeed) / 2 + attempts / 4",
-    rulesEscapePriority = 8,
-    rulesExperienceForFainted = False,
-    rulesExperienceFormula = Formula "level ^ 3",
-    rulesExperienceRewardFormula = Formula "floor(yield * level / max(1, participants))",
-    rulesExperienceSharing = "participants",
-    rulesFallbackMove = defaultMove,
-    rulesHealthFormula = Formula "base + level * 2",
-    rulesItemPriority = 6,
-    rulesLearningPolicy = "keep-newest",
-    rulesMaxKnownMoves = 4,
-    rulesMaxLevel = 100,
-    rulesMinimumDamage = 1,
-    rulesRandomDamageMax = 1,
-    rulesRandomDamageMin = 1,
-    rulesResetStagesOnSwitch = True,
-    rulesSameAffinityBonus = 1.5,
-    rulesSimultaneousDefeatWins = False,
-    rulesSpeedStat = "speed",
-    rulesStageLimit = 6,
-    rulesStageMultiplierFormula = Formula "if(stage >= 0, (2 + stage) / 2, 2 / (2 - stage))",
-    rulesStatFormula = Formula "max(1, floor(base * (1 + level / 50)))",
-    rulesStatusCaptureBonuses = Map.empty,
-    rulesSwitchPriority = 7,
-    rulesTieBreak = "player"
-  }
+defaultRules =
+  Rules
+    { rulesAccuracyFormula = Formula "accuracy * accuracyStage / evasionStage",
+      rulesAccuracyPerHit = False,
+      rulesAccuracyStageFormula = Formula "if(stage >= 0, (3 + stage) / 3, 3 / (3 - stage))",
+      rulesAffinityChart = Map.empty,
+      rulesAiScoreFormula = Formula "damage * accuracy + heal * if(hpRatio < 0.4, 2, 0.2) + status * 2",
+      rulesCaptureFormula = Formula "rate * itemBonus * (1 - hp / (2 * maxHP)) * statusBonus",
+      rulesCaptureGivesExperience = False,
+      rulesCriticalFormula = Formula "criticalRate",
+      rulesCriticalIgnoresStages = False,
+      rulesCriticalMultiplierFormula = Formula "2",
+      rulesCriticalPerHit = True,
+      rulesDamageFormula = Formula "max(1, floor(power * attack / defense / 5 * critical * affinity * sameAffinity * variance))",
+      rulesDefeatRecovery = 1,
+      rulesEncountersAfterWarp = False,
+      rulesEscapeFormula = Formula "speed / max(1, enemySpeed) / 2 + attempts / 4",
+      rulesEscapePriority = 8,
+      rulesExperienceForFainted = False,
+      rulesExperienceFormula = Formula "level ^ 3",
+      rulesExperienceRewardFormula = Formula "floor(yield * level / max(1, participants))",
+      rulesExperienceSharing = "participants",
+      rulesFallbackMove = defaultMove,
+      rulesHealthFormula = Formula "base + level * 2",
+      rulesItemPriority = 6,
+      rulesLearningPolicy = "keep-newest",
+      rulesMaxKnownMoves = 4,
+      rulesMaxLevel = 100,
+      rulesMinimumDamage = 1,
+      rulesRandomDamageMax = 1,
+      rulesRandomDamageMin = 1,
+      rulesResetStagesOnSwitch = True,
+      rulesSameAffinityBonus = 1.5,
+      rulesSimultaneousDefeatWins = False,
+      rulesSpeedStat = "speed",
+      rulesStageLimit = 6,
+      rulesStageMultiplierFormula = Formula "if(stage >= 0, (2 + stage) / 2, 2 / (2 - stage))",
+      rulesStatFormula = Formula "max(1, floor(base * (1 + level / 50)))",
+      rulesStatusCaptureBonuses = Map.empty,
+      rulesSwitchPriority = 7,
+      rulesTieBreak = "player"
+    }
 
 data Rules = Rules
   { rulesAccuracyFormula :: Formula,
@@ -101,46 +102,49 @@ data Rules = Rules
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Rules)
 
 instance HasCodec Rules where
-  codec = Codec.bimapCodec validate id $ Codec.object "Rules" $ Rules
-    <$> Codec.optionalFieldWithOmittedDefault "accuracyFormula" (Formula "accuracy * accuracyStage / evasionStage") "Hit probability; the result is clamped to zero through one." Codec..= rulesAccuracyFormula
-    <*> Codec.optionalFieldWithOmittedDefault "accuracyPerHit" False "Roll accuracy for each hit rather than once per move." Codec..= rulesAccuracyPerHit
-    <*> Codec.optionalFieldWithOmittedDefault "accuracyStageFormula" (Formula "if(stage >= 0, (3 + stage) / 3, 3 / (3 - stage))") "Accuracy and evasion stage multiplier." Codec..= rulesAccuracyStageFormula
-    <*> Codec.optionalFieldWithOmittedDefaultWith "affinityChart" (Codec.mapCodec (Codec.mapCodec NumberCodec.finiteDoubleCodec)) (Map.empty) "Attack affinity to defending affinity multipliers." Codec..= rulesAffinityChart
-    <*> Codec.optionalFieldWithOmittedDefault "aiScoreFormula" (Formula "damage * accuracy + heal * if(hpRatio < 0.4, 2, 0.2) + status * 2") "Score used by the strongest opponent policy." Codec..= rulesAiScoreFormula
-    <*> Codec.optionalFieldWithOmittedDefault "captureFormula" (Formula "rate * itemBonus * (1 - hp / (2 * maxHP)) * statusBonus") "Capture probability; the result is clamped to zero through one." Codec..= rulesCaptureFormula
-    <*> Codec.optionalFieldWithOmittedDefault "captureGivesExperience" (False) "Whether a successful capture grants experience." Codec..= rulesCaptureGivesExperience
-    <*> Codec.optionalFieldWithOmittedDefault "criticalFormula" (Formula "criticalRate") "Critical probability." Codec..= rulesCriticalFormula
-    <*> Codec.optionalFieldWithOmittedDefault "criticalIgnoresStages" (False) "Ignore attack and defense stages on critical hits." Codec..= rulesCriticalIgnoresStages
-    <*> Codec.optionalFieldWithOmittedDefault "criticalMultiplierFormula" (Formula "2") "Critical damage multiplier." Codec..= rulesCriticalMultiplierFormula
-    <*> Codec.optionalFieldWithOmittedDefault "criticalPerHit" True "Roll critical chance independently for each hit." Codec..= rulesCriticalPerHit
-    <*> Codec.optionalFieldWithOmittedDefault "damageFormula" (Formula "max(1, floor(power * attack / defense / 5 * critical * affinity * sameAffinity * variance))") "Damage expression; affinity immunity still prevents damage." Codec..= rulesDamageFormula
-    <*> Codec.optionalFieldWithOmittedDefaultWith "defeatRecovery" NumberCodec.probabilityCodec (1) "Fraction of maximum health restored after defeat." Codec..= rulesDefeatRecovery
-    <*> Codec.optionalFieldWithOmittedDefault "encountersAfterWarp" False "Allow encounter checks at warp destinations." Codec..= rulesEncountersAfterWarp
-    <*> Codec.optionalFieldWithOmittedDefault "escapeFormula" (Formula "speed / max(1, enemySpeed) / 2 + attempts / 4") "Escape probability." Codec..= rulesEscapeFormula
-    <*> Codec.optionalFieldWithOmittedDefault "escapePriority" (8) "Action priority for escape attempts." Codec..= rulesEscapePriority
-    <*> Codec.optionalFieldWithOmittedDefault "experienceForFainted" False "Allow fainted recipients to gain experience." Codec..= rulesExperienceForFainted
-    <*> Codec.optionalFieldWithOmittedDefault "experienceFormula" (Formula "level ^ 3") "Total experience threshold for a level." Codec..= rulesExperienceFormula
-    <*> Codec.optionalFieldWithOmittedDefault "experienceRewardFormula" (Formula "floor(yield * level / max(1, participants))") "Experience per eligible party member." Codec..= rulesExperienceRewardFormula
-    <*> Codec.optionalFieldWithOmittedDefault "experienceSharing" ("participants") "Experience recipients: participants or party." Codec..= rulesExperienceSharing
-    <*> Codec.optionalFieldWithOmittedDefault "fallbackMove" (defaultMove) "Action used when no learned move has remaining uses." Codec..= rulesFallbackMove
-    <*> Codec.optionalFieldWithOmittedDefault "healthFormula" (Formula "base + level * 2") "Maximum health on level changes and generated encounters." Codec..= rulesHealthFormula
-    <*> Codec.optionalFieldWithOmittedDefault "itemPriority" (6) "Action priority for items." Codec..= rulesItemPriority
-    <*> Codec.optionalFieldWithOmittedDefault "learningPolicy" ("keep-newest") "Move overflow policy: keep-newest or keep-oldest." Codec..= rulesLearningPolicy
-    <*> Codec.optionalFieldWithOmittedDefault "maxKnownMoves" (4) "Game-wide learned move limit." Codec..= rulesMaxKnownMoves
-    <*> Codec.optionalFieldWithOmittedDefault "maxLevel" (100) "Game-wide level limit." Codec..= rulesMaxLevel
-    <*> Codec.optionalFieldWithOmittedDefault "minimumDamage" (1) "Minimum damage of a nonimmune damaging hit." Codec..= rulesMinimumDamage
-    <*> Codec.optionalFieldWithOmittedDefaultWith "randomDamageMax" NumberCodec.finiteDoubleCodec (1) "Upper damage variance multiplier." Codec..= rulesRandomDamageMax
-    <*> Codec.optionalFieldWithOmittedDefaultWith "randomDamageMin" NumberCodec.finiteDoubleCodec (1) "Lower damage variance multiplier." Codec..= rulesRandomDamageMin
-    <*> Codec.optionalFieldWithOmittedDefault "resetStagesOnSwitch" True "Clear temporary stages when switching." Codec..= rulesResetStagesOnSwitch
-    <*> Codec.optionalFieldWithOmittedDefaultWith "sameAffinityBonus" NumberCodec.finiteDoubleCodec (1.5) "Multiplier when a move matches an attacking affinity." Codec..= rulesSameAffinityBonus
-    <*> Codec.optionalFieldWithOmittedDefault "simultaneousDefeatWins" False "Treat a simultaneous final faint as a victory." Codec..= rulesSimultaneousDefeatWins
-    <*> Codec.optionalFieldWithOmittedDefault "speedStat" ("speed") "Stat used to order actions." Codec..= rulesSpeedStat
-    <*> Codec.optionalFieldWithOmittedDefault "stageLimit" (6) "Absolute limit on temporary stat stages." Codec..= rulesStageLimit
-    <*> Codec.optionalFieldWithOmittedDefault "stageMultiplierFormula" (Formula "if(stage >= 0, (2 + stage) / 2, 2 / (2 - stage))") "Temporary stat multiplier." Codec..= rulesStageMultiplierFormula
-    <*> Codec.optionalFieldWithOmittedDefault "statFormula" (Formula "max(1, floor(base * (1 + level / 50)))") "Combat stat calculated from its base value and level." Codec..= rulesStatFormula
-    <*> Codec.optionalFieldWithOmittedDefaultWith "statusCaptureBonuses" (Codec.mapCodec NumberCodec.finiteDoubleCodec) (Map.empty) "Capture multipliers keyed by status." Codec..= rulesStatusCaptureBonuses
-    <*> Codec.optionalFieldWithOmittedDefault "switchPriority" (7) "Action priority for a voluntary switch." Codec..= rulesSwitchPriority
-    <*> Codec.optionalFieldWithOmittedDefault "tieBreak" ("player") "Equal-speed order: player, opponent or random." Codec..= rulesTieBreak
+  codec =
+    Codec.bimapCodec validate id
+      $ Codec.object "Rules"
+      $ Rules
+        <$> Codec.optionalFieldWithOmittedDefault "accuracyFormula" (Formula "accuracy * accuracyStage / evasionStage") "Hit probability; the result is clamped to zero through one." Codec..= rulesAccuracyFormula
+        <*> Codec.optionalFieldWithOmittedDefault "accuracyPerHit" False "Roll accuracy for each hit rather than once per move." Codec..= rulesAccuracyPerHit
+        <*> Codec.optionalFieldWithOmittedDefault "accuracyStageFormula" (Formula "if(stage >= 0, (3 + stage) / 3, 3 / (3 - stage))") "Accuracy and evasion stage multiplier." Codec..= rulesAccuracyStageFormula
+        <*> Codec.optionalFieldWithOmittedDefaultWith "affinityChart" (Codec.mapCodec (Codec.mapCodec NumberCodec.finiteDoubleCodec)) (Map.empty) "Attack affinity to defending affinity multipliers." Codec..= rulesAffinityChart
+        <*> Codec.optionalFieldWithOmittedDefault "aiScoreFormula" (Formula "damage * accuracy + heal * if(hpRatio < 0.4, 2, 0.2) + status * 2") "Score used by the strongest opponent policy." Codec..= rulesAiScoreFormula
+        <*> Codec.optionalFieldWithOmittedDefault "captureFormula" (Formula "rate * itemBonus * (1 - hp / (2 * maxHP)) * statusBonus") "Capture probability; the result is clamped to zero through one." Codec..= rulesCaptureFormula
+        <*> Codec.optionalFieldWithOmittedDefault "captureGivesExperience" (False) "Whether a successful capture grants experience." Codec..= rulesCaptureGivesExperience
+        <*> Codec.optionalFieldWithOmittedDefault "criticalFormula" (Formula "criticalRate") "Critical probability." Codec..= rulesCriticalFormula
+        <*> Codec.optionalFieldWithOmittedDefault "criticalIgnoresStages" (False) "Ignore attack and defense stages on critical hits." Codec..= rulesCriticalIgnoresStages
+        <*> Codec.optionalFieldWithOmittedDefault "criticalMultiplierFormula" (Formula "2") "Critical damage multiplier." Codec..= rulesCriticalMultiplierFormula
+        <*> Codec.optionalFieldWithOmittedDefault "criticalPerHit" True "Roll critical chance independently for each hit." Codec..= rulesCriticalPerHit
+        <*> Codec.optionalFieldWithOmittedDefault "damageFormula" (Formula "max(1, floor(power * attack / defense / 5 * critical * affinity * sameAffinity * variance))") "Damage expression; affinity immunity still prevents damage." Codec..= rulesDamageFormula
+        <*> Codec.optionalFieldWithOmittedDefaultWith "defeatRecovery" NumberCodec.probabilityCodec (1) "Fraction of maximum health restored after defeat." Codec..= rulesDefeatRecovery
+        <*> Codec.optionalFieldWithOmittedDefault "encountersAfterWarp" False "Allow encounter checks at warp destinations." Codec..= rulesEncountersAfterWarp
+        <*> Codec.optionalFieldWithOmittedDefault "escapeFormula" (Formula "speed / max(1, enemySpeed) / 2 + attempts / 4") "Escape probability." Codec..= rulesEscapeFormula
+        <*> Codec.optionalFieldWithOmittedDefault "escapePriority" (8) "Action priority for escape attempts." Codec..= rulesEscapePriority
+        <*> Codec.optionalFieldWithOmittedDefault "experienceForFainted" False "Allow fainted recipients to gain experience." Codec..= rulesExperienceForFainted
+        <*> Codec.optionalFieldWithOmittedDefault "experienceFormula" (Formula "level ^ 3") "Total experience threshold for a level." Codec..= rulesExperienceFormula
+        <*> Codec.optionalFieldWithOmittedDefault "experienceRewardFormula" (Formula "floor(yield * level / max(1, participants))") "Experience per eligible party member." Codec..= rulesExperienceRewardFormula
+        <*> Codec.optionalFieldWithOmittedDefault "experienceSharing" ("participants") "Experience recipients: participants or party." Codec..= rulesExperienceSharing
+        <*> Codec.optionalFieldWithOmittedDefault "fallbackMove" (defaultMove) "Action used when no learned move has remaining uses." Codec..= rulesFallbackMove
+        <*> Codec.optionalFieldWithOmittedDefault "healthFormula" (Formula "base + level * 2") "Maximum health on level changes and generated encounters." Codec..= rulesHealthFormula
+        <*> Codec.optionalFieldWithOmittedDefault "itemPriority" (6) "Action priority for items." Codec..= rulesItemPriority
+        <*> Codec.optionalFieldWithOmittedDefault "learningPolicy" ("keep-newest") "Move overflow policy: keep-newest or keep-oldest." Codec..= rulesLearningPolicy
+        <*> Codec.optionalFieldWithOmittedDefault "maxKnownMoves" (4) "Game-wide learned move limit." Codec..= rulesMaxKnownMoves
+        <*> Codec.optionalFieldWithOmittedDefault "maxLevel" (100) "Game-wide level limit." Codec..= rulesMaxLevel
+        <*> Codec.optionalFieldWithOmittedDefault "minimumDamage" (1) "Minimum damage of a nonimmune damaging hit." Codec..= rulesMinimumDamage
+        <*> Codec.optionalFieldWithOmittedDefaultWith "randomDamageMax" NumberCodec.finiteDoubleCodec (1) "Upper damage variance multiplier." Codec..= rulesRandomDamageMax
+        <*> Codec.optionalFieldWithOmittedDefaultWith "randomDamageMin" NumberCodec.finiteDoubleCodec (1) "Lower damage variance multiplier." Codec..= rulesRandomDamageMin
+        <*> Codec.optionalFieldWithOmittedDefault "resetStagesOnSwitch" True "Clear temporary stages when switching." Codec..= rulesResetStagesOnSwitch
+        <*> Codec.optionalFieldWithOmittedDefaultWith "sameAffinityBonus" NumberCodec.finiteDoubleCodec (1.5) "Multiplier when a move matches an attacking affinity." Codec..= rulesSameAffinityBonus
+        <*> Codec.optionalFieldWithOmittedDefault "simultaneousDefeatWins" False "Treat a simultaneous final faint as a victory." Codec..= rulesSimultaneousDefeatWins
+        <*> Codec.optionalFieldWithOmittedDefault "speedStat" ("speed") "Stat used to order actions." Codec..= rulesSpeedStat
+        <*> Codec.optionalFieldWithOmittedDefault "stageLimit" (6) "Absolute limit on temporary stat stages." Codec..= rulesStageLimit
+        <*> Codec.optionalFieldWithOmittedDefault "stageMultiplierFormula" (Formula "if(stage >= 0, (2 + stage) / 2, 2 / (2 - stage))") "Temporary stat multiplier." Codec..= rulesStageMultiplierFormula
+        <*> Codec.optionalFieldWithOmittedDefault "statFormula" (Formula "max(1, floor(base * (1 + level / 50)))") "Combat stat calculated from its base value and level." Codec..= rulesStatFormula
+        <*> Codec.optionalFieldWithOmittedDefaultWith "statusCaptureBonuses" (Codec.mapCodec NumberCodec.finiteDoubleCodec) (Map.empty) "Capture multipliers keyed by status." Codec..= rulesStatusCaptureBonuses
+        <*> Codec.optionalFieldWithOmittedDefault "switchPriority" (7) "Action priority for a voluntary switch." Codec..= rulesSwitchPriority
+        <*> Codec.optionalFieldWithOmittedDefault "tieBreak" ("player") "Equal-speed order: player, opponent or random." Codec..= rulesTieBreak
     where
       validGrowth value = case traverse (\level -> Formula.evaluate (Map.singleton "level" (number level)) (rulesExperienceFormula value)) [1 .. rulesMaxLevel value] of
         Left _ -> False

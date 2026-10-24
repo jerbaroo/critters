@@ -3,9 +3,8 @@ module Critters.Engine (applyEvent, chooseInteraction, commandFor, conditionHold
 
 import Control.Monad (foldM)
 import Critters.Battle.Common qualified as BattleCommon
-import Critters.Battle.Engine qualified as BattleEngine
 import Critters.Battle.Encounter qualified as Encounter
-import Critters.State.CombatConfig qualified as Config
+import Critters.Battle.Engine qualified as BattleEngine
 import Critters.Command (Command (..))
 import Critters.Event (Event)
 import Critters.Event qualified as Event
@@ -18,6 +17,7 @@ import Critters.State.Battle qualified as Battle
 import Critters.State.BattlePhase (BattlePhase (Finished))
 import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.Choice qualified as Choice
+import Critters.State.CombatConfig qualified as Config
 import Critters.State.Condition (Condition (..))
 import Critters.State.Conversation (Conversation (..))
 import Critters.State.Effect (Effect)
@@ -29,8 +29,8 @@ import Critters.State.Location qualified as Location
 import Critters.State.Npc qualified as Npc
 import Critters.State.Object qualified as Object
 import Critters.State.Party (Party (..))
-import Critters.State.Rules qualified as Rules
 import Critters.State.Position (Position (..))
+import Critters.State.Rules qualified as Rules
 import Critters.State.Tile (Tile (..))
 import Critters.State.Warp qualified as Warp
 import Critters.State.World (World (..), tileAt)

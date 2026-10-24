@@ -21,6 +21,7 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as TextEncoding
 import Data.Text.IO qualified as TextIO
 import InteractionTests qualified as InteractionTests
+import SchemaTests qualified as SchemaTests
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (hClose, openTempFile)
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -814,7 +815,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [BattlePersistenceTests.tests, BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, saveTests, stateTests, tuiTests, warpTests]
+tests = testGroup "Critters" [BattlePersistenceTests.tests, BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, saveTests, SchemaTests.tests, stateTests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =

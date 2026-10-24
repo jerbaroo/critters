@@ -51,12 +51,13 @@ learn context critter newLevel
     definition = Map.findWithDefault Species.defaultSpecies (Critter.species critter) (Config.configSpecies (battleConfig current))
     learned = concatMap snd (filter (\(level, _) -> level > Critter.level critter && level <= newLevel) (Map.toAscList (Species.speciesLearnset definition)))
     maximumHP = max 1 (integer (Common.evaluate (number (Critter.maxHitPoints critter)) (Rules.rulesHealthFormula (Common.rulesFor context)) [("base", number (Map.findWithDefault (Critter.maxHitPoints critter) "health" (Species.speciesStats definition))), ("level", number newLevel)]))
-    updated = critter
-      { Critter.battleProfile = (Critter.battleProfile critter){Profile.profileKnownMoves = nub (Common.knownMoves current critter <> learned)},
-        Critter.hitPoints = if Critter.hitPoints critter == 0 then 0 else max 1 (min maximumHP (integer (number (Critter.hitPoints critter) + number maximumHP - number (Critter.maxHitPoints critter)))),
-        Critter.level = newLevel,
-        Critter.maxHitPoints = maximumHP
-      }
+    updated =
+      critter
+        { Critter.battleProfile = (Critter.battleProfile critter){Profile.profileKnownMoves = nub (Common.knownMoves current critter <> learned)},
+          Critter.hitPoints = if Critter.hitPoints critter == 0 then 0 else max 1 (min maximumHP (integer (number (Critter.hitPoints critter) + number maximumHP - number (Critter.maxHitPoints critter)))),
+          Critter.level = newLevel,
+          Critter.maxHitPoints = maximumHP
+        }
 
 rewardDefeated :: State Context ()
 rewardDefeated = do
@@ -66,8 +67,10 @@ rewardDefeated = do
     State.modify $ \value -> value{contextBattle = (contextBattle value){battleRewardedOpponents = battleRewardedOpponents (contextBattle value) <> [index]}}
     let rules = Common.rulesFor current
         captured = index `elem` battleCapturedOpponents (contextBattle current)
-        participants = filter (\slot -> Rules.rulesExperienceForFainted rules || maybe False Common.usable (case drop slot (Common.allCritters Player current) of critter : _ -> Just critter; [] -> Nothing))
-          (if Rules.rulesExperienceSharing rules == "party" then [0 .. length (Party.members (contextParty current)) - 1] else battleParticipants (contextBattle current))
+        participants =
+          filter
+            (\slot -> Rules.rulesExperienceForFainted rules || maybe False Common.usable (case drop slot (Common.allCritters Player current) of critter : _ -> Just critter; [] -> Nothing))
+            (if Rules.rulesExperienceSharing rules == "party" then [0 .. length (Party.members (contextParty current)) - 1] else battleParticipants (contextBattle current))
         yield = fromMaybe 0 (Species.speciesExperienceYield <$> Map.lookup (Critter.species defeated) (Config.configSpecies (battleConfig (contextBattle current))))
         amount = max 0 (integer (Common.evaluate 0 (Rules.rulesExperienceRewardFormula rules) [("level", number (Critter.level defeated)), ("participants", number (length participants)), ("yield", number yield)]))
     when (not captured || Rules.rulesCaptureGivesExperience rules) (mapM_ (\slot -> gain slot amount) participants)

@@ -22,7 +22,8 @@ data Effect
 
 instance HasCodec Effect where
   codec =
-    Codec.object "Effect"
+    Codec.named "Effect"
+      $ Codec.object "Effect"
       $ Codec.discriminatedUnionCodec "type" encode
       $ HashMap.fromList
         [ ("give-critter", ("GiveCritter", Codec.mapToDecoder GiveCritter given)),
