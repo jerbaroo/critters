@@ -7,11 +7,11 @@ import Critters.Interface.TUI.Keyboard qualified as Keyboard
 import Critters.InterfaceType (InterfaceType (Debug, TUI))
 import Critters.State.GameState (GameState)
 import Data.Text (Text)
-import Prelude (IO, ($))
+import Prelude (FilePath, IO, ($))
 
 data Interface a = Interface
-  { input :: IO Input,
-    log :: a -> Text -> IO (),
+  { input :: FilePath -> IO Input,
+    log :: a -> FilePath -> Text -> IO (),
     output :: GameState -> IO a
   }
 

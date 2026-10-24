@@ -31,6 +31,11 @@ engineTests =
         $ assertBool "Expected an absolute recorded position, preserving the world"
         $ Engine.applyEvent state (Event.PlayerMoved (Position (-4) 9))
           == state{playerPosition = Position (-4) 9},
+      testCase "Block occupied ground and water without producing events" $
+        forM_ [House, Laboratory, Sign, Tree, Wall, Water] $ \tile ->
+          let current = withDestination tile
+           in assertBool "Expected the original state and no movement fact" $
+                Engine.step current Input.Up == (current, []),
       testCase "Directions use the bottom-left coordinate system"
         $ forM_
           [ (Input.Down, Position 2 1),
@@ -41,6 +46,15 @@ engineTests =
         $ \(input, destination) ->
           assertBool "Expected the input to produce and apply a movement fact" $
             Engine.step state input == (state{playerPosition = destination}, [Event.PlayerMoved destination]),
+      testCase "Reject destinations outside the world or in missing cells" $ do
+        forM_ [World [], World [[Ground]]] $ \layout ->
+          forM_ [Input.Down, Input.Left, Input.Right, Input.Up] $ \input ->
+            let current = GameState (Position 0 0) layout
+             in assertBool "Expected no movement beyond the world" $
+                  Engine.step current input == (current, [])
+        let ragged = GameState (Position 1 0) (World [[], [Ground, Ground]])
+        assertBool "Expected a missing cell in a ragged row to block movement" $
+          Engine.step ragged Input.Up == (ragged, []),
       testCase "Replay history reproduces sequential input processing" $
         let (finalState, history) = foldl advance (state, []) [Input.Up, Input.Right, Input.Down]
          in assertBool "Expected each input to use the latest state, with replayable facts" $
@@ -49,13 +63,20 @@ engineTests =
                 && foldl Engine.applyEvent state history == finalState,
       testCase "Unmapped and non-movement inputs leave state unchanged" $
         forM_ [Input.Character 'x', Input.Character 'q', Input.Enter, Input.Escape] $
-          \input -> assertBool "Expected no state changes or events" (Engine.step state input == (state, []))
+          \input -> assertBool "Expected no state changes or events" (Engine.step state input == (state, [])),
+      testCase "Walk across terrain and doorways" $
+        forM_ [Door, Flowers, Grass, Ground, Path, Sand, TallGrass] $ \tile ->
+          let current = withDestination tile
+              destination = Position 1 2
+           in assertBool "Expected a movement fact and the new player position" $
+                Engine.step current Input.Up == (current{playerPosition = destination}, [Event.PlayerMoved destination])
     ]
   where
     advance (current, history) input =
       let (next, events) = Engine.step current input
        in (next, history <> events)
     state = GameState (Position 2 2) (World (replicate 5 (replicate 5 Ground)))
+    withDestination tile = GameState (Position 1 1) (World [[Ground, tile, Ground], replicate 3 Ground, replicate 3 Ground])
 
 eventTests :: TestTree
 eventTests =
@@ -216,7 +237,7 @@ stateTests =
           testCase "Position" $
             forM_ [Position 0 0, Position (-1) 2, Position minBound maxBound] assertRoundTrip,
           testCase "Tile" $
-            forM_ [Ground, TallGrass, Wall, Water] assertRoundTrip,
+            forM_ [Door, Flowers, Grass, Ground, House, Laboratory, Path, Sand, Sign, TallGrass, Tree, Wall, Water] assertRoundTrip,
           testCase "World" $
             forM_ [World [], World [[]], World [[Ground], [], [Water, Wall]]] assertRoundTrip
         ],
@@ -267,32 +288,39 @@ tuiTests =
           ]
         $ \(position, destination) ->
           assertBool "Expected the player at the centered or clamped viewport position" $
-            tile (view (GameState position largeWorld)) destination == "@ ",
+            tile (view (GameState position largeWorld)) destination == "🧑",
+      testCase "Draw one marker per building footprint" $
+        let layout = World [[House, House, Ground, Laboratory, Laboratory], [House, Door, Ground, Laboratory, Door]]
+            drawing = TUI.render (GameState (Position (-1) (-1)) layout)
+         in assertBool "Expected one house, one lab, and their separate doors" $
+              Text.count "🏠" drawing == 1
+                && Text.count "🔬" drawing == 1
+                && Text.count "🚪" drawing == 2,
       testCase "Empty and ragged worlds retain a fixed viewport" $
         forM_ [World [], World [[]], World [[Wall], [], [Ground, Water]]] $ \layout -> do
           let rows = view (GameState (Position minBound maxBound) layout)
-          assertBool "Expected the configured rows and two-column tiles without borders" $
-            length rows == TUI.height && all ((== TUI.width * 2) . Text.length) rows
+          assertBool "Expected the configured rows and one wide glyph per floor cell" $
+            length rows == TUI.height && all ((== TUI.width) . Text.length) rows
           assertBool "Expected out-of-viewport players to be omitted" $
-            all (not . Text.isInfixOf "@") rows,
+            all (not . Text.isInfixOf "🧑") rows,
       testCase "Movement appears above the old position when walking north" $
         let state = GameState (Position 2 2) largeWorld
             (nextState, _) = Engine.step state Input.Up
          in assertBool "Expected the player one row higher, with the old terrain restored" $
-              tile (view state) (2, 2) == "@ "
-                && tile (view nextState) (2, 3) == "@ "
-                && tile (view nextState) (2, 2) == ". ",
+              tile (view state) (2, 2) == "🧑"
+                && tile (view nextState) (2, 3) == "🧑"
+                && tile (view nextState) (2, 2) == "⬜",
       testCase "Render tiles north-up with the player over the terrain" $
         let rows = view (GameState (Position 0 0) (World [[TallGrass, Wall, Ground], [Ground, Water, Wall]]))
          in assertBool "Expected all tile glyphs, padding, and the player at the bottom-left" $
-              Text.take 6 (rows !! (TUI.height - 2)) == "^ ##. "
-                && Text.take 6 (rows !! (TUI.height - 1)) == "@ ~~##"
-                && tile rows (3, 0) == "  "
-                && tile rows (0, TUI.height - 1) == "  "
+              Text.take 3 (rows !! (TUI.height - 2)) == "🌿🧱⬜"
+                && Text.take 3 (rows !! (TUI.height - 1)) == "🧑🌊🧱"
+                && tile rows (3, 0) == "\x3000"
+                && tile rows (0, TUI.height - 1) == "\x3000"
     ]
   where
     largeWorld = World (replicate (TUI.height * 2) (replicate (TUI.width * 2) Ground))
-    tile rows (column, row) = Text.take 2 $ Text.drop (column * 2) (rows !! (TUI.height - row - 1))
+    tile rows (column, row) = Text.take 1 $ Text.drop column (rows !! (TUI.height - row - 1))
     view = Text.lines . TUI.render
 
 withSaveFile :: (FilePath -> IO a) -> IO a

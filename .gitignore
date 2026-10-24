@@ -1,4 +1,4 @@
 .direnv/
 dist-newstyle/
-save_*
+*_save_*
 *_logs

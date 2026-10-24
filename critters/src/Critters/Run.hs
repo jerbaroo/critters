@@ -5,7 +5,7 @@ import Critters.CLI.Options qualified as CLIOptions
 import Critters.Command qualified as Command
 import Critters.Engine qualified as Engine
 import Critters.Event (Event)
-import Critters.Interface (Interface)
+import Critters.Interface (Interface (..))
 import Critters.Interface qualified as Interface
 import Critters.Pretty (pretty)
 import Critters.Save qualified as Save
@@ -33,42 +33,43 @@ loadGameState gameFile =
     Right (Right state) -> pure state
 
 loadHistory :: FilePath -> IO [Event]
-loadHistory path = do
-  exists <- doesPathExist path
-  if exists
-    then
+loadHistory path =
+  doesPathExist path >>= \case
+    True ->
       Save.load path >>= \case
         Left err -> die $ "Cannot load save file '" <> from path <> "': " <> err
         Right history -> pure history
-    else writeHistory path [] >> pure []
+    False -> writeHistory path [] >> pure []
 
-loop :: Interface a -> FilePath -> [Event] -> GameState -> IO ()
-loop interface saveFile history state = do
-  userInput <- Interface.input interface
+loop :: FilePath -> Interface a -> FilePath -> [Event] -> GameState -> IO ()
+loop logPath interface saveFile history state = do
+  userInput <- interface.input logPath
   let command = Engine.commandFor state userInput
       (nextState, events) = Engine.step state userInput
   context <- Interface.output interface nextState
-  Interface.log interface context $ "Input: " <> pretty userInput
-  Interface.log interface context $ "Command: " <> maybe "Nothing" pretty command
-  mapM_ (\event -> Interface.log interface context $ "Event: " <> pretty event) events
+  interface.log context logPath $ "Input: " <> pretty userInput
+  interface.log context logPath $ "Command: " <> maybe "Nothing" pretty command
+  mapM_ (\event -> interface.log context logPath $ "Event: " <> pretty event) events
   nextHistory <- saveEvents saveFile history events
   case command of
     Just Command.Quit -> exitSuccess
-    _ -> loop interface saveFile nextHistory nextState
+    _ -> loop logPath interface saveFile nextHistory nextState
 
 run :: IO ()
 run = do
   configuration <- Options.execParser CLI.options
   let gameFile = CLIOptions.gameFile configuration
-      saveFile = CLIOptions.saveFile configuration
+      saveName = CLIOptions.saveName configuration
+      saveFile = gameFile <> "_" <> from saveName
+      logPath = saveFile <> "_logs"
   state <- loadGameState gameFile
   history <- loadHistory saveFile
   let resumedState = Save.apply state history
   Interface.select (CLIOptions.interfaceType configuration) $ \interface -> do
     context <- Interface.output interface resumedState
-    Interface.log interface context $ "Loaded game from " <> from gameFile
-    Interface.log interface context $ from $ toLazyText $ "Replayed events: " <> decimal (length history)
-    loop interface saveFile history resumedState
+    interface.log context logPath $ "Loaded game from " <> from gameFile
+    interface.log context logPath $ from $ toLazyText $ "Replayed events: " <> decimal (length history)
+    loop logPath interface saveFile history resumedState
 
 saveEvents :: FilePath -> [Event] -> [Event] -> IO [Event]
 saveEvents _ history [] = pure history

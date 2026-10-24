@@ -55,6 +55,7 @@ common settings
         DerivingVia
         ImportQualifiedPost
         LambdaCase
+        OverloadedRecordDot
         OverloadedStrings
         TypeApplications
     default-language: GHC2024

@@ -9,6 +9,8 @@ import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
 import Critters.State.GameState (GameState (..))
 import Critters.State.Position (Position (..))
+import Critters.State.Tile (Tile (..))
+import Critters.State.World (tileAt)
 
 -- | Apply an established fact without checking command rules again.
 applyEvent :: GameState -> Event -> GameState
@@ -26,10 +28,14 @@ commandFor _ = \case
   Input.Up -> Just (Walk North)
   _ -> Nothing
 
--- | Walking produces a movement fact; other commands have no state changes yet.
+-- | Only valid destinations produce movement facts.
 eventsFor :: GameState -> Command -> [Event]
 eventsFor state = \case
-  Walk direction -> [Event.PlayerMoved (move direction (playerPosition state))]
+  Walk direction ->
+    let destination = move direction (playerPosition state)
+     in if maybe False walkable (tileAt (world state) destination)
+          then [Event.PlayerMoved destination]
+          else []
   _ -> []
 
 move :: Direction -> Position -> Position
@@ -44,3 +50,19 @@ step :: GameState -> Input -> (GameState, [Event])
 step state input = (foldl' applyEvent state events, events)
   where
     events = maybe [] (eventsFor state) (commandFor state input)
+
+walkable :: Tile -> Bool
+walkable = \case
+  Door -> True
+  Flowers -> True
+  Grass -> True
+  Ground -> True
+  House -> False
+  Laboratory -> False
+  Path -> True
+  Sand -> True
+  Sign -> False
+  TallGrass -> True
+  Tree -> False
+  Wall -> False
+  Water -> False

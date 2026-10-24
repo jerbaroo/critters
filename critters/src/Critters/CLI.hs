@@ -29,13 +29,13 @@ interfaceParser =
 options :: Options.ParserInfo Options
 options =
   Options.info
-    (Options.helper <*> (Options <$> gameFileParser <*> interfaceParser <*> saveFileParser))
+    (Options.helper <*> (Options <$> gameFileParser <*> interfaceParser <*> saveNameParser))
     (Options.fullDesc <> Options.progDesc "Load a game from a JSON file.")
 
-saveFileParser :: Options.Parser FilePath
-saveFileParser =
+saveNameParser :: Options.Parser Text
+saveNameParser =
   Options.strOption $
-    Options.action "file"
-      <> Options.help "Resume and save event history in this JSON Lines file (created if missing)"
+    Options.action "name"
+      <> Options.help "Name of save file (next to game file)."
       <> Options.long "save"
-      <> Options.metavar "SAVE_FILE"
+      <> Options.metavar "SAVE_NAME"
