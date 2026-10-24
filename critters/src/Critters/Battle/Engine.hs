@@ -38,7 +38,8 @@ beginBattle state identifier
             battleDefinition = definition,
             battleMessages = [Definition.definitionName definition],
             battleOpponentParty = Definition.definitionOpponents definition,
-            battleParticipants = [player]
+            battleParticipants = [player],
+            battleRewardedOpponents = [index | (index, critter) <- zip [0 ..] (Definition.definitionOpponents definition), not (Common.usable critter)]
           }
         else Left "A participant has no species definition."
 

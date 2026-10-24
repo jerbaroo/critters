@@ -7,6 +7,7 @@ import Critters.Battle.Action (Action (..))
 import Critters.Battle.Common (Context (..), Side (..))
 import Critters.Battle.Common qualified as Common
 import Critters.Battle.Items qualified as Items
+import Critters.Battle.Progression qualified as Progression
 import Critters.Battle.Status qualified as Status
 import Critters.Event (Event)
 import Critters.Number (integer, number)
@@ -158,6 +159,7 @@ runTurn action = do
 
 settle :: State Context ()
 settle = do
+  Progression.rewardDefeated
   context <- State.get
   when (not (isJust (battleOutcome (contextBattle context)))) $
     if not (any Common.usable (Common.allCritters Player context)) then finish (if not (any Common.usable (Common.allCritters Enemy context)) && Rules.rulesSimultaneousDefeatWins (Common.rulesFor context) then Victory else Defeat)
@@ -177,7 +179,7 @@ switch side index = do
   where
     update reset current
       | side == Player = current{battleActivePlayer = index, battleParticipants = nub (battleParticipants current <> [index]), battlePhase = ActionMenu, battlePlayerStages = if reset then Map.empty else battlePlayerStages current}
-      | otherwise = current{battleActiveOpponent = index, battleEnemyStages = if reset then Map.empty else battleEnemyStages current}
+      | otherwise = current{battleActiveOpponent = index, battleParticipants = [battleActivePlayer current], battleEnemyStages = if reset then Map.empty else battleEnemyStages current}
 
 validAction :: Context -> Action -> Bool
 validAction context action

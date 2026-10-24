@@ -125,6 +125,32 @@ profileTests = testGroup "Combat profiles"
       assertBool "Expected positive species stats" (isLeft (Aeson.eitherDecode @Species "{\"stats\":{\"attack\":0}}"))
   ]
 
+progressionTests :: TestTree
+progressionTests = testGroup "Progression"
+  [ testCase "Gain experience, increase health and learn an authored move" $
+      let opened = start progressing
+          result = win opened
+       in assertBool "Expected curve-based growth and learned moves" (map level (members (party result)) == [3] && map maxHitPoints (members (party result)) == [26] && map hitPoints (members (party result)) == [21] && map (profileExperience . battleProfile) (members (party result)) == [28] && map (profileKnownMoves . battleProfile) (members (party result)) == [[MoveId "strike", MoveId "surge"]]),
+    testCase "Apply the configured move overflow and level cap policies" $
+      let configured = progressing{combat = (combat progressing){configRules = (configRules (combat progressing)){rulesMaxKnownMoves = 1, rulesMaxLevel = 3}}}
+          newest = win (start configured)
+          oldest = win (start configured{combat = (combat configured){configRules = (configRules (combat configured)){rulesLearningPolicy = "keep-oldest"}}})
+       in assertBool "Expected game-defined learning behavior" (map (profileKnownMoves . battleProfile) (members (party newest)) == [[MoveId "surge"]] && map (profileKnownMoves . battleProfile) (members (party oldest)) == [[MoveId "strike"]] && map (profileExperience . battleProfile) (members (party newest)) == [27]),
+    testCase "Share rewards according to the configured recipient policy" $
+      let configured = progressing{party = Party [basicCritter 20 2 20 "leafling", basicCritter 20 2 20 "leafling"], combat = (combat progressing){configRules = (configRules (combat progressing)){rulesExperienceSharing = "party"}}}
+          result = win (start configured)
+       in assertBool "Expected a divided reward for both conscious party members" (map (profileExperience . battleProfile) (members (party result)) == [18,18]),
+    testCase "Do not award an opponent twice when acknowledging the outcome" $
+      let won = win (start progressing)
+          (closed, _) = Engine.step won Input.Enter
+       in assertBool "Expected acknowledgement to retain the recorded progression" (party closed == party won && battle closed == Nothing),
+    testCase "Reject a nonincreasing experience curve" $
+      assertBool "Expected an invalid growth policy to fail decoding" (isLeft (Aeson.eitherDecode @Rules "{\"experienceFormula\":\"1\"}"))
+  ]
+  where
+    progressing = fixture{combat = (combat fixture){configMoves = Map.insert (MoveId "surge") defaultMove{moveName = "Surge", movePower = 12} (configMoves (combat fixture)), configSpecies = Map.adjust (\definition -> definition{speciesExperienceYield = 10}) "stonekin" (Map.adjust (\definition -> definition{speciesLearnset = Map.fromList [(1,[MoveId "strike"]),(3,[MoveId "surge"])]}) "leafling" (configSpecies (combat fixture)))}}
+    win opened = iterate (\state -> foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId "strike")))) opened !! 2
+
 snapshotTests :: TestTree
 snapshotTests = testGroup "Battle snapshots"
   [ testCase "Round trip a configured battle and complete game state" $
@@ -186,7 +212,7 @@ start state = either (const state) (\active -> state{battle = Just active}) (Bat
 
 tests :: TestTree
 tests = testGroup "Battle"
-  [ itemTests, lifecycleTests, profileTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
+  [ itemTests, lifecycleTests, profileTests, progressionTests, snapshotTests, statusTests, turnTests, variationTests, viewTests,
     testGroup "Rules"
       [ testCase "Evaluate arithmetic, rounding and conditional rules" $ do
           assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)

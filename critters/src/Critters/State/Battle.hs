@@ -26,6 +26,7 @@ data Battle = Battle
     battleParticipants :: [Int],
     battlePhase :: BattlePhase,
     battlePlayerStages :: Map Text Int,
+    battleRewardedOpponents :: [Int],
     battleSelected :: Int,
     battleSelectedItem :: Maybe Text,
     battleTurn :: Int
@@ -48,6 +49,7 @@ defaultBattle = Battle
     battleParticipants = [],
     battlePhase = ActionMenu,
     battlePlayerStages = Map.empty,
+    battleRewardedOpponents = [],
     battleSelected = 0,
     battleSelectedItem = Nothing,
     battleTurn = 0
@@ -68,6 +70,7 @@ instance HasCodec Battle where
     <*> Codec.optionalFieldWithOmittedDefault "participants" ([]) "Player party indices that have participated." Codec..= battleParticipants
     <*> Codec.optionalFieldWithOmittedDefault "phase" (ActionMenu) "Current battle menu." Codec..= battlePhase
     <*> Codec.optionalFieldWithOmittedDefault "playerStages" (Map.empty) "Temporary player stat stages." Codec..= battlePlayerStages
+    <*> Codec.optionalFieldWithOmittedDefault "rewardedOpponents" [] "Opponent indices whose experience has been resolved." Codec..= battleRewardedOpponents
     <*> Codec.optionalFieldWithOmittedDefault "selected" (0) "Selected menu entry." Codec..= battleSelected
     <*> Codec.optionalFieldOrNull "selectedItem" "Item awaiting a party target." Codec..= battleSelectedItem
     <*> Codec.optionalFieldWithOmittedDefault "turn" (0) "Completed turns." Codec..= battleTurn

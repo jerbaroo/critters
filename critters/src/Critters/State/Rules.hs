@@ -5,6 +5,7 @@ import Autodocodec (Autodocodec (..), HasCodec)
 import Critters.Codec qualified as NumberCodec
 import Critters.Formula qualified as Formula
 import Critters.Formula (Formula (..))
+import Critters.Number (integer, number)
 import Critters.State.Move (Move, defaultMove)
 import Critters.State.Move qualified as Move
 import Data.Aeson qualified as Aeson
@@ -29,6 +30,7 @@ defaultRules = Rules
     rulesDefeatRecovery = 1,
     rulesEscapeFormula = Formula "speed / max(1, enemySpeed) / 2 + attempts / 4",
     rulesEscapePriority = 8,
+    rulesExperienceForFainted = False,
     rulesExperienceFormula = Formula "level ^ 3",
     rulesExperienceRewardFormula = Formula "floor(yield * level / max(1, participants))",
     rulesExperienceSharing = "participants",
@@ -69,6 +71,7 @@ data Rules = Rules
     rulesDefeatRecovery :: Double,
     rulesEscapeFormula :: Formula,
     rulesEscapePriority :: Int,
+    rulesExperienceForFainted :: Bool,
     rulesExperienceFormula :: Formula,
     rulesExperienceRewardFormula :: Formula,
     rulesExperienceSharing :: Text,
@@ -112,6 +115,7 @@ instance HasCodec Rules where
     <*> Codec.optionalFieldWithOmittedDefaultWith "defeatRecovery" NumberCodec.probabilityCodec (1) "Fraction of maximum health restored after defeat." Codec..= rulesDefeatRecovery
     <*> Codec.optionalFieldWithOmittedDefault "escapeFormula" (Formula "speed / max(1, enemySpeed) / 2 + attempts / 4") "Escape probability." Codec..= rulesEscapeFormula
     <*> Codec.optionalFieldWithOmittedDefault "escapePriority" (8) "Action priority for escape attempts." Codec..= rulesEscapePriority
+    <*> Codec.optionalFieldWithOmittedDefault "experienceForFainted" False "Allow fainted recipients to gain experience." Codec..= rulesExperienceForFainted
     <*> Codec.optionalFieldWithOmittedDefault "experienceFormula" (Formula "level ^ 3") "Total experience threshold for a level." Codec..= rulesExperienceFormula
     <*> Codec.optionalFieldWithOmittedDefault "experienceRewardFormula" (Formula "floor(yield * level / max(1, participants))") "Experience per eligible party member." Codec..= rulesExperienceRewardFormula
     <*> Codec.optionalFieldWithOmittedDefault "experienceSharing" ("participants") "Experience recipients: participants or party." Codec..= rulesExperienceSharing
@@ -135,9 +139,13 @@ instance HasCodec Rules where
     <*> Codec.optionalFieldWithOmittedDefault "switchPriority" (7) "Action priority for a voluntary switch." Codec..= rulesSwitchPriority
     <*> Codec.optionalFieldWithOmittedDefault "tieBreak" ("player") "Equal-speed order: player, opponent or random." Codec..= rulesTieBreak
     where
+      validGrowth value = case traverse (\level -> Formula.evaluate (Map.singleton "level" (number level)) (rulesExperienceFormula value)) [1 .. rulesMaxLevel value] of
+        Left _ -> False
+        Right values -> all (>= 0) values && and (zipWith (<) (map integer values) (drop 1 (map integer values)))
       validate value
         | rulesMaxKnownMoves value < 1 || rulesMaxLevel value < 1 || rulesMaxLevel value > 10000 = Left "Move and level limits must be positive; maxLevel must not exceed 10000."
         | Move.moveMaxUses (rulesFallbackMove value) /= 0 = Left "The fallback move must have unlimited uses."
+        | not (validGrowth value) = Left "Experience thresholds must be nonnegative, finite, strictly increasing and fit in an integer."
         | rulesStageLimit value < 0 || rulesStageLimit value > 100 || rulesMinimumDamage value < 0 = Left "Stage limit must be between zero and 100 and minimum damage must be nonnegative."
         | rulesRandomDamageMin value < 0 || rulesRandomDamageMax value < rulesRandomDamageMin value || rulesSameAffinityBonus value < 0 = Left "Damage multipliers must be nonnegative and ordered."
         | any (< 0) (concatMap Map.elems (Map.elems (rulesAffinityChart value))) || any (< 0) (Map.elems (rulesStatusCaptureBonuses value)) = Left "Affinity and capture multipliers must be nonnegative."
