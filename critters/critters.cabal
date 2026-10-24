@@ -67,6 +67,7 @@ library
     -- Modules exported by the library.
     exposed-modules:
         Critters.CLI
+        Critters.CLI.Options
         Critters.Command
         Critters.Engine
         Critters.Event
@@ -74,6 +75,7 @@ library
         Critters.Input.Direction
         Critters.Pretty
         Critters.Run
+        Critters.Save
         Critters.State
         Critters.State.GameState
         Critters.State.Position
@@ -88,8 +90,11 @@ library
         aeson,
         autodocodec,
         base,
+        bytestring,
+        directory,
         optparse-applicative,
-        text
+        text,
+        witch
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -142,5 +147,7 @@ test-suite critters-test
         aeson,
         base,
         critters,
+        directory,
         tasty,
-        tasty-hunit
+        tasty-hunit,
+        text

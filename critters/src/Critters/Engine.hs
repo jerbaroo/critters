@@ -1,3 +1,4 @@
+-- | Pure pipeline from Input -> Command -> Event -> State.
 module Critters.Engine (applyEvent, commandFor, eventsFor, step) where
 
 import Critters.Command (Command (..))

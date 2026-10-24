@@ -3,7 +3,7 @@ module Critters.Input (Input (..), parse) where
 import Critters.Pretty (Pretty (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Prelude hiding (Left, Right)
+import Prelude (Char, Eq, Maybe (..), (<>))
 
 data Input
   = Character Char

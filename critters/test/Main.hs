@@ -1,12 +1,19 @@
 module Main (main) where
 
+import Control.Exception (bracket)
 import Control.Monad (forM_)
 import Critters.Engine qualified as Engine
 import Critters.Event qualified as Event
 import Critters.Input qualified as Input
-import Critters.State
+import Critters.Save qualified as Save
+import Critters.State (GameState (..), Position (..), Tile (..), World (..), initialState, tileAt)
 import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as TextEncoding
+import Data.Text.IO qualified as TextIO
+import System.Directory (getTemporaryDirectory, removeFile)
+import System.IO (hClose, openTempFile)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, testCase)
 
@@ -89,6 +96,69 @@ inputTests =
 
 main :: IO ()
 main = defaultMain tests
+
+saveTests :: TestTree
+saveTests =
+  testGroup
+    "Save"
+    [ testCase "Apply history in order without rechecking rules"
+        $ assertBool "Expected the final recorded position and original world"
+        $ Save.apply initialState history == initialState{playerPosition = Position (-4) 9},
+      testCase "Empty history preserves the starting state"
+        $ assertBool "Expected the original state"
+        $ Save.apply initialState [] == initialState,
+      testCase "Load an independently written history" $
+        withSaveFile $ \path ->
+          forM_ ["\n", "\r\n"] $ \newline ->
+            forM_ ["", newline] $ \ending -> do
+              TextIO.writeFile path (Text.intercalate newline eventLines <> ending)
+              result <- Save.load path
+              assertBool "Expected ordered events with either newline convention and an optional final newline" (result == Right history),
+      testCase "Load legacy JSON-array histories" $
+        withSaveFile $ \path -> do
+          TextIO.writeFile path ("[" <> Text.intercalate "," eventLines <> "]")
+          result <- Save.load path
+          assertBool "Expected existing histories to remain readable" (result == Right history),
+      testCase "Read failures are returned" $
+        withSaveFile $ \path -> do
+          result <- Save.load (path <> "/history.json")
+          assertBool "Expected a file error" (isLeft result),
+      testCase "Reject invalid histories" $
+        withSaveFile $ \path ->
+          forM_ ["{", "{}", "{\"type\":\"unknown\"}\n", "{\"position\":{\"x\":2,\"y\":1},\"type\":\"player-moved\"}\n{}\n", "\n", "[{\"type\":\"unknown\"}]"] $ \invalid -> do
+            TextIO.writeFile path invalid
+            result <- Save.load path
+            assertBool "Expected the entire history to be rejected" (isLeft result),
+      testCase "Round trip engine histories through disk" $
+        withSaveFile $ \path -> do
+          let (nextState, events) = Engine.step initialState Input.Right
+          forM_ [(events, nextState), ([], initialState)] $ \(savedEvents, expectedState) -> do
+            written <- Save.save path savedEvents
+            loaded <- Save.load path
+            assertBool "Expected writing to succeed" (written == Right ())
+            assertBool "Expected the complete saved history" (loaded == Right savedEvents)
+            assertBool "Expected replay to reproduce the resulting state" (fmap (Save.apply initialState) loaded == Right expectedState),
+      testCase "Write independently decodable events on separate lines" $
+        withSaveFile $ \path ->
+          forM_ [history, []] $ \savedEvents -> do
+            written <- Save.save path savedEvents
+            contents <- TextIO.readFile path
+            let decoded = traverse (Aeson.eitherDecodeStrict @Event.Event . TextEncoding.encodeUtf8) (Text.lines contents)
+            assertBool "Expected writing to succeed" (written == Right ())
+            assertBool "Expected one event per line in order" (decoded == Right savedEvents)
+            assertBool "Expected an empty file or a final newline" $
+              if null savedEvents then Text.null contents else Text.isSuffixOf "\n" contents,
+      testCase "Write failures are returned" $
+        withSaveFile $ \path -> do
+          result <- Save.save (path <> "/history.json") history
+          assertBool "Expected a file error" (isLeft result)
+    ]
+  where
+    eventLines =
+      [ "{\"position\":{\"x\":2,\"y\":1},\"type\":\"player-moved\"}",
+        "{\"position\":{\"x\":-4,\"y\":9},\"type\":\"player-moved\"}"
+      ]
+    history = map Event.PlayerMoved [Position 2 1, Position (-4) 9]
 
 stateTests :: TestTree
 stateTests =
@@ -180,4 +250,16 @@ stateTests =
     state = GameState (Position 2 1) (World [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [engineTests, eventTests, inputTests, stateTests]
+tests = testGroup "Critters" [engineTests, eventTests, inputTests, saveTests, stateTests]
+
+withSaveFile :: (FilePath -> IO a) -> IO a
+withSaveFile action = do
+  directory <- getTemporaryDirectory
+  bracket
+    ( do
+        (path, handle) <- openTempFile directory "critters-save.json"
+        hClose handle
+        pure path
+    )
+    removeFile
+    action

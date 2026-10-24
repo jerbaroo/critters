@@ -7,7 +7,7 @@ module Critters.State
   )
 where
 
-import Critters.State.GameState
-import Critters.State.Position
-import Critters.State.Tile
-import Critters.State.World
+import Critters.State.GameState (GameState (..), initialState)
+import Critters.State.Position (Position (..))
+import Critters.State.Tile (Tile (..))
+import Critters.State.World (World (..), tileAt)
