@@ -10,7 +10,7 @@ import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Save qualified as Save
-import Critters.State (ActiveInteraction (..), Choice (..), Condition (..), Critter (..), Effect (..), FlagId (..), GameState (..), Interaction (..), Location (..), MapId (..), Npc (..), NpcId (..), Object (..), ObjectId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), basicCritter, initialState, interactionText, objectAt)
+import Critters.State (ActiveInteraction (..), Choice (..), Condition (..), Critter (..), Effect (..), FlagId (..), GameState (..), Interaction (..), Location (..), MapId (..), Npc (..), NpcId (..), Object (..), ObjectId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), basicCritter, interactionText, objectAt)
 import Critters.State.ActiveInteraction qualified as ActiveInteraction
 import Critters.State.GameState qualified as GameState
 import Critters.State.Interaction qualified as Interaction
@@ -20,6 +20,7 @@ import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
+import MessageFixtures qualified as MessageFixtures
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (hClose, openTempFile)
 import Test.Tasty (TestTree, testGroup)
@@ -61,11 +62,11 @@ codecTests =
         , testCase "Resolve stable NPC name references and report invalid references" $ do
             let state = permitted{GameState.npcs = Map.singleton (NpcId "guide") (Npc [] [] (Location (MapId "test") (Position 1 2)) "Guide")}
             assertBool "Expected the stored NPC name to replace the reference" $
-                GameState.resolveText state "{guide.name}: Hello, {guide.name}!" == Right "Guide: Hello, Guide!"
+                GameState.resolveText state "{npcs.guide.name}: Hello, {npcs.guide.name}!" == Right "Guide: Hello, Guide!"
             assertBool "Expected the TUI to display resolved dialogue" $
-                "Guide: Hello!" `Text.isInfixOf` TUI.render state{GameState.activeInteraction = Just (ActiveInteraction 0 (Interaction [] [] ["{guide.name}: Hello!"] []) Nothing)}
+                "Guide: Hello!" `Text.isInfixOf` TUI.render state{GameState.activeInteraction = Just (ActiveInteraction 0 MessageFixtures.messages (Interaction [] [] ["{npcs.guide.name}: Hello!"] []) Nothing)}
             assertBool "Expected an unknown NPC to report a runtime error" $
-                isLeft (GameState.resolveText state "{missing.name}")
+                isLeft (GameState.resolveText state "{npcs.missing.name}")
             assertBool "Expected unsupported fields to report a runtime error" $
                 isLeft (GameState.resolveText state "{guide.title}")
             assertBool "Expected unclosed references to report a runtime error" $
@@ -76,7 +77,7 @@ codecTests =
             assertRoundTrip (Object "🔴" [gift] (Location (MapId "test") (Position 2 1)))
             assertRoundTrip permitted
             forM_ [Nothing, Just 0, Just 1] $ \selected -> do
-                let active = ActiveInteraction 0 gift selected
+                let active = ActiveInteraction 0 MessageFixtures.messages gift selected
                 assertRoundTrip active
                 assertRoundTrip permitted{GameState.activeInteraction = Just active}
                 assertRoundTrip (Event.InteractionStarted active)
@@ -109,7 +110,7 @@ effectTests =
 
 exampleState :: GameState
 exampleState =
-    initialState
+    MessageFixtures.initialState
         { GameState.maps = Map.singleton (MapId "workshop") (World (replicate 10 (replicate 12 (Just Ground))) [])
         , GameState.npcs =
             Map.singleton
@@ -250,7 +251,7 @@ interactionTests =
                 , (5, 4, Input.Right, East, 4)
                 ]
             $ \(count, index, input, direction, expected) ->
-                let active = ActiveInteraction 0 gift{Interaction.choices = replicate count (Choice [] "Option")} (Just index)
+                let active = ActiveInteraction 0 MessageFixtures.messages gift{Interaction.choices = replicate count (Choice [] "Option")} (Just index)
                     state = permitted{GameState.activeInteraction = Just active}
                     (selected, events) = Engine.step state input
                  in assertBool "Expected only the selected index to change according to the grid" $
@@ -357,7 +358,7 @@ saveTests =
 
 scene :: GameState
 scene =
-    initialState
+    MessageFixtures.initialState
         { GameState.maps = Map.singleton (MapId "test") (World (replicate 5 (replicate 5 (Just Ground))) [])
         , GameState.maxPartySize = 2
         , GameState.npcs = Map.singleton (NpcId "guide") (Npc [] [Interaction [] [] ["Hello.", "You may take a gift."] [SetFlag permission True]] (Location (MapId "test") (Position 1 2)) "Guide")
@@ -400,7 +401,7 @@ tuiTests =
                         && drop (TUI.height - 4) (rows selected) == [border "┌" "┐", optionRow "   Yes" " > No", optionRow "" "", border "└" "┘"]
                         && all Text.null (map Text.strip (take (TUI.height - 5) (drop 1 (rows opened))))
         , testCase "Show choices without a generated question when dialogue is absent" $
-            let state = permitted{GameState.activeInteraction = Just (ActiveInteraction 0 gift{Interaction.dialogue = []} (Just 0))}
+            let state = permitted{GameState.activeInteraction = Just (ActiveInteraction 0 MessageFixtures.messages gift{Interaction.dialogue = []} (Just 0))}
                 drawing = rows state
              in assertBool "Expected blank space above the choices instead of a generated prompt" $
                     all (Text.null . Text.strip) (take (TUI.height - 4) drawing)
@@ -435,7 +436,7 @@ tuiTests =
         ]
   where
     border left right = left <> Text.replicate (TUI.width * 2 - 2) "─" <> right
-    choiceState selected choices = permitted{GameState.activeInteraction = Just (ActiveInteraction 0 gift{Interaction.choices = choices} (Just selected))}
+    choiceState selected choices = permitted{GameState.activeInteraction = Just (ActiveInteraction 0 MessageFixtures.messages gift{Interaction.choices = choices} (Just selected))}
     optionRow left right = "│" <> Text.justifyLeft (TUI.width - 1) ' ' left <> Text.justifyLeft (TUI.width - 1) ' ' right <> "│"
 
 withSaveFile :: (FilePath -> IO a) -> IO a

@@ -11,6 +11,7 @@ import Critters.Event qualified as Event
 import Critters.Input (Input)
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
+import Critters.Message qualified as Message
 import Critters.Number qualified as Number
 import Critters.Selection qualified as Selection
 import Critters.State.Battle (Battle (..), defaultBattle)
@@ -25,6 +26,8 @@ import Critters.State.Effect (Effect)
 import Critters.State.EncounterEntry (EncounterEntry)
 import Critters.State.EncounterEntry qualified as Entry
 import Critters.State.GameState (GameState (..))
+import Critters.State.GameState qualified as GameState
+import Critters.State.Message (BattleMessage (..), Presentation (..))
 import Critters.State.Party qualified as Party
 import Critters.State.Rules qualified as Rules
 import Critters.State.Species qualified as Species
@@ -36,11 +39,11 @@ import Data.Text qualified as Text
 
 beginBattle :: GameState -> Text -> Either Text Battle
 beginBattle state identifier =
-    maybe (Left "That battle is not defined.") (beginDefinition state) (Map.lookup identifier state.combat.battles)
+    maybe (Left (GameState.messageText state "battleUndefined" [])) (beginDefinition state) (Map.lookup identifier state.combat.battles)
 
 beginEncounter :: GameState -> EncounterEntry -> Either Text Battle
 beginEncounter state entry = do
-    species <- maybe (Left "That encounter species is not defined.") Right (Map.lookup entry.species state.combat.species)
+    species <- maybe (Left (GameState.messageText state "encounterSpeciesUndefined" [])) Right (Map.lookup entry.species state.combat.species)
     let level = entry.level
         baseHealth = Map.findWithDefault (Map.findWithDefault 20 "health" (((Species.defaultSpecies).stats).values)) "health" species.stats.values
         hitPoints = max 1 $ Number.integer $ Common.evaluate state.combat.rules.healthFormula [("base", Number.number baseHealth), ("level", Number.number level)]
@@ -49,20 +52,20 @@ beginEncounter state entry = do
             Definition.defaultDefinition
                 { Definition.allowCapture = entry.allowCapture
                 , Definition.allowEscape = entry.allowEscape
-                , Definition.name = "Wild " <> displayName
+                , Definition.name = GameState.messageText state "battleWildName" [("species", Message.text displayName)]
                 , Definition.opponents = [Critter.basicCritter hitPoints level hitPoints entry.species]
                 }
     beginDefinition state definition
 
 beginDefinition :: GameState -> BattleDefinition -> Either Text Battle
 beginDefinition state definition
-    | isJust state.battle = Left "A battle is already in progress."
-    | state.partyOpen = Left "Close your party before starting a battle."
+    | isJust state.battle = Left (GameState.messageText state "battleAlreadyActive" [])
+    | state.partyOpen = Left (GameState.messageText state "battleCloseParty" [])
     | otherwise = do
-        player <- maybe (Left "You need a conscious critter to battle.") Right (findIndex Common.usable state.party.members)
-        opponent <- maybe (Left "There are no conscious opponents.") Right (findIndex Common.usable definition.opponents)
+        player <- maybe (Left (GameState.messageText state "battleNoConsciousCritter" [])) Right (findIndex Common.usable state.party.members)
+        opponent <- maybe (Left (GameState.messageText state "battleNoConsciousOpponent" [])) Right (findIndex Common.usable definition.opponents)
         if length definition.opponents > state.maxPartySize
-            then Left "Opposing party exceeds the game party limit."
+            then Left (GameState.messageText state "battleOpponentPartyTooLarge" [])
             else
                 if all (Common.validCritter state.combat) (state.party.members <> definition.opponents)
                     then
@@ -73,13 +76,14 @@ beginDefinition state definition
                                 , Battle.config = state.combat
                                 , Battle.definition = definition
                                 , Battle.initialSeed = Just state.randomSeed
-                                , Battle.messages = [definition.name]
+                                , Battle.messages = [BattleMessage (Message.named "battleTitle" [("opponent", Message.reference definition.name)]) Dialogue]
+                                , Battle.messageTemplates = state.messages
                                 , Battle.opponentParty = definition.opponents
                                 , Battle.participants = [player]
                                 , Battle.phase = if null definition.introduction then ActionMenu else Introduction
                                 , Battle.rewardedOpponents = [index | (index, critter) <- zip [0 ..] definition.opponents, not (Common.usable critter)]
                                 }
-                    else Left "A participant has an invalid species, move, status, resource count or level."
+                    else Left (GameState.messageText state "battleInvalidParticipant" [])
 
 commandFor :: Input -> Maybe Command
 commandFor = \case

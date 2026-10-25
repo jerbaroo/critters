@@ -31,7 +31,7 @@ defaultDefinition =
         , defeatEffects = []
         , escapeEffects = []
         , introduction = []
-        , name = "Battle"
+        , name = "{messages.battleDefaultName}"
         , opponentPolicy = "first"
         , opponents = []
         , victoryEffects = []
@@ -49,7 +49,7 @@ instance HasCodec BattleDefinition where
                         <*> Codec.optionalFieldWithOmittedDefault "defeatEffects" ([]) "Effects after defeat." Codec..= (.defeatEffects)
                         <*> Codec.optionalFieldWithOmittedDefault "escapeEffects" ([]) "Effects after escaping." Codec..= (.escapeEffects)
                         <*> Codec.optionalFieldWithOmittedDefault "introduction" [] "Dialogue before combatants are sent out." Codec..= (.introduction)
-                        <*> Codec.optionalFieldWithOmittedDefault "name" ("Battle") "Battle title." Codec..= (.name)
+                        <*> Codec.optionalFieldWithOmittedDefault "name" ("{messages.battleDefaultName}") "Battle title." Codec..= (.name)
                         <*> Codec.optionalFieldWithOmittedDefault "opponentPolicy" ("first") "Opponent policy: first, random or strongest." Codec..= (.opponentPolicy)
                         <*> Codec.optionalFieldWithOmittedDefault "opponents" ([]) "Opposing party." Codec..= (.opponents)
                         <*> Codec.optionalFieldWithOmittedDefault "victoryEffects" ([]) "Effects after victory." Codec..= (.victoryEffects)

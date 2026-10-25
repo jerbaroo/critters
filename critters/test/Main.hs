@@ -15,9 +15,10 @@ import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Save qualified as Save
-import Critters.State (Condition (..), Conversation (..), Critter (..), FlagId (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), basicCritter, conversationText, initialState, tileAt, world)
+import Critters.State (Condition (..), Conversation (..), Critter (..), FlagId (..), GameState (..), Location (..), MapId (..), Npc (..), NpcId (..), Party (..), Position (..), Tile (..), Warp (..), World (..), basicCritter, conversationText, tileAt, world)
 import Critters.State.Critter qualified as Critter
 import Critters.State.GameState qualified as GameState
+import Critters.State.Message (Messages (..))
 import Critters.State.Npc qualified as Npc
 import Critters.State.World qualified as World
 import Data.Aeson qualified as Aeson
@@ -28,6 +29,7 @@ import Data.Text.Encoding qualified as TextEncoding
 import Data.Text.IO qualified as TextIO
 import ExpressionTests qualified as ExpressionTests
 import InteractionTests qualified as InteractionTests
+import MessageFixtures qualified as MessageFixtures
 import PlaybackTests qualified as PlaybackTests
 import SceneTests qualified as SceneTests
 import SchemaTests qualified as SchemaTests
@@ -49,11 +51,11 @@ conditionTests =
         "Condition"
         [ testCase "Evaluate present and missing flags" $ do
             forM_ [Map.empty, Map.singleton (FlagId "other") True, Map.singleton identifier False] $ \storyFlags ->
-                let state = initialState{GameState.flags = storyFlags}
+                let state = MessageFixtures.initialState{GameState.flags = storyFlags}
                  in assertBool "Expected missing and explicitly false flags to match false, regardless of unrelated flags" $
                         Engine.conditionHolds state (Flag identifier False)
                             && not (Engine.conditionHolds state (Flag identifier True))
-            let state = initialState{GameState.flags = Map.singleton identifier True}
+            let state = MessageFixtures.initialState{GameState.flags = Map.singleton identifier True}
             assertBool "Expected a true flag to match only true" $
                 Engine.conditionHolds state (Flag identifier True)
                     && not (Engine.conditionHolds state (Flag identifier False))
@@ -97,7 +99,7 @@ conditionTests =
                 assertRoundTrip name
                 forM_ [False, True] $ \value -> do
                     assertRoundTrip (Flag name value)
-                    assertRoundTrip initialState{GameState.flags = Map.singleton name value}
+                    assertRoundTrip MessageFixtures.initialState{GameState.flags = Map.singleton name value}
         ]
   where
     identifier = FlagId "guide.offer-made"
@@ -404,7 +406,7 @@ filledWorld :: [[Tile]] -> World
 filledWorld rows = World (map (map Just) rows) []
 
 gameState :: Position -> World -> GameState
-gameState location layout = initialState{GameState.maps = Map.singleton (MapId "overworld") layout, GameState.playerPosition = location}
+gameState location layout = MessageFixtures.initialState{GameState.maps = Map.singleton (MapId "overworld") layout, GameState.playerPosition = location}
 
 inputTests :: TestTree
 inputTests =
@@ -437,7 +439,7 @@ partyRenderTests =
         "Party rendering"
         [ testCase "Clip a large party using the full viewport without a hint footer" $ do
             let critters = replicate TUI.height (basicCritter 1 1 1 "visible") <> [basicCritter 1 1 1 "hidden"]
-                state = initialState{GameState.maxPartySize = length critters, GameState.party = Party critters, GameState.partyOpen = True}
+                state = MessageFixtures.initialState{GameState.maxPartySize = length critters, GameState.party = Party critters, GameState.partyOpen = True}
                 drawing = rows state
             assertViewport state
             assertBool "Expected party members to fill the viewport and overflow to be clipped" $
@@ -446,7 +448,7 @@ partyRenderTests =
                     && Text.count ". Visible" (Text.concat drawing) == TUI.height - 2
         , testCase "Display critter details in party order" $ do
             let state =
-                    initialState
+                    MessageFixtures.initialState
                         { GameState.maxPartySize = 9
                         , GameState.party = Party [basicCritter 7 5 20 "leafling", basicCritter 0 2 12 "brookling"]
                         , GameState.partyOpen = True
@@ -456,7 +458,7 @@ partyRenderTests =
                 map Text.stripEnd (take 4 (rows state))
                     == ["Party — 2 / 9", "", "1. Leafling  Lv 5  HP 7/20", "2. Brookling  Lv 2  HP 0/12"]
         , testCase "Display an empty party" $ do
-            let state = initialState{GameState.partyOpen = True}
+            let state = MessageFixtures.initialState{GameState.partyOpen = True}
                 drawing = rows state
             assertViewport state
             assertBool "Expected a zero count and empty-party message without a hint footer" $
@@ -475,7 +477,7 @@ partyRenderTests =
                             [] -> False
         , testCase "Wrap long Unicode species names within the viewport" $ do
             let name = Text.replicate columns "界" <> "e\x0301\ESC\r"
-                state = initialState{GameState.party = Party [basicCritter 7 5 20 name], GameState.partyOpen = True}
+                state = MessageFixtures.initialState{GameState.party = Party [basicCritter 7 5 20 name], GameState.partyOpen = True}
                 drawing = Text.concat (rows state)
             assertViewport state
             assertBool "Expected wide characters and combining marks to survive wrapping, with terminal controls removed" $
@@ -498,7 +500,7 @@ partyTests =
         [ testCase "Accept parties up to the game limit, including more than six members" $
             forM_ [1, 3, 9] $ \limit ->
                 forM_ [[], replicate limit critter] $ \critters ->
-                    assertRoundTrip initialState{GameState.maxPartySize = limit, GameState.party = Party critters}
+                    assertRoundTrip MessageFixtures.initialState{GameState.maxPartySize = limit, GameState.party = Party critters}
         , testCase "Default an omitted party in current and legacy game files"
             $ forM_
                 [ "{\"maps\":{\"overworld\":{\"tiles\":[]}},\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
@@ -523,7 +525,7 @@ partyTests =
              in assertBool "Expected the configured party and game limit to load together" $
                     fmap (\state -> (state.party, state.maxPartySize)) (Aeson.eitherDecode @GameState encoded) == Right (configured, 6)
         , testCase "Preserve the party through movement and event replay" $
-            let starting = initialState{GameState.maxPartySize = 2, GameState.party = configured}
+            let starting = MessageFixtures.initialState{GameState.maxPartySize = 2, GameState.party = configured}
                 (moved, events) = Engine.step starting Input.Right
              in assertBool "Expected movement facts and replay to retain all party data" $
                     not (null events)
@@ -543,7 +545,7 @@ partyTests =
                 let encoded = "{" <> layout <> ",\"maxPartySize\":1,\"party\":" <> fixture <> ",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
                  in assertBool "Expected a party larger than the game limit to fail loading" (isLeft (Aeson.eitherDecode @GameState encoded))
         , testCase "Round trip game state with a configured party" $
-            assertRoundTrip initialState{GameState.maxPartySize = 2, GameState.party = configured}
+            assertRoundTrip MessageFixtures.initialState{GameState.maxPartySize = 2, GameState.party = configured}
         , testCase "Save the expected JSON structure" $
             assertBool "Expected only the ordered members in the party JSON" $
                 Aeson.eitherDecode fixture == Right (Aeson.toJSON configured)
@@ -572,14 +574,14 @@ partyViewTests =
                         && Engine.eventsFor talking Command.OpenParty == []
                         && Engine.commandFor npcState{GameState.partyOpen = True} (Input.Character 'q') == Just Command.Quit
         , testCase "Load and round trip an open party view" $ do
-            assertRoundTrip initialState{GameState.partyOpen = True}
+            assertRoundTrip MessageFixtures.initialState{GameState.partyOpen = True}
             forM_ ["\"maps\":{\"overworld\":{\"tiles\":[]}}", "\"world\":{\"tiles\":[]}"] $ \layout ->
                 let encoded = "{" <> layout <> ",\"partyOpen\":true,\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1}"
                  in assertBool "Expected both game formats to preserve the open view" $
                         fmap (.partyOpen) (Aeson.eitherDecode @GameState encoded) == Right True
         , testCase "Open with p and close with p or Escape" $
             forM_ [Input.Character 'p', Input.Escape] $ \closeInput ->
-                forM_ [initialState, npcState] $ \starting ->
+                forM_ [MessageFixtures.initialState, npcState] $ \starting ->
                     let (opened, started) = Engine.step starting (Input.Character 'p')
                         (closed, ended) = Engine.step opened closeInput
                      in assertBool "Expected only the view state to change, with exploration restored on closing" $
@@ -605,11 +607,11 @@ partyViewTests =
                 Engine.applyEvent opened (Event.PlayerWarped target) == npcState{GameState.partyOpen = True, GameState.playerMap = MapId "missing", GameState.playerPosition = Position (-3) 12}
         , testCase "Save and resume party view history" $
             withSaveFile $ \path ->
-                forM_ [([Event.PartyOpened], initialState{GameState.partyOpen = True}), ([Event.PartyOpened, Event.PartyClosed], initialState)] $ \(history, expected) -> do
+                forM_ [([Event.PartyOpened], MessageFixtures.initialState{GameState.partyOpen = True}), ([Event.PartyOpened, Event.PartyClosed], MessageFixtures.initialState)] $ \(history, expected) -> do
                     written <- Save.save path history
                     loaded <- Save.load path
                     assertBool "Expected view facts to survive disk and reproduce the open or closed state" $
-                        written == Right () && loaded == Right history && fmap (Save.apply initialState) loaded == Right expected
+                        written == Right () && loaded == Right history && fmap (Save.apply MessageFixtures.initialState) loaded == Right expected
         ]
 
 saveTests :: TestTree
@@ -618,10 +620,10 @@ saveTests =
         "Save"
         [ testCase "Apply history in order without rechecking rules" $
             assertBool "Expected the final recorded position and original world" $
-                Save.apply initialState history == initialState{GameState.playerPosition = Position (-4) 9}
+                Save.apply MessageFixtures.initialState history == MessageFixtures.initialState{GameState.playerPosition = Position (-4) 9}
         , testCase "Empty history preserves the starting state" $
             assertBool "Expected the original state" $
-                Save.apply initialState [] == initialState
+                Save.apply MessageFixtures.initialState [] == MessageFixtures.initialState
         , testCase "Load an independently written history" $
             withSaveFile $ \path ->
                 forM_ ["\n", "\r\n"] $ \newline ->
@@ -646,13 +648,13 @@ saveTests =
                     assertBool "Expected the entire history to be rejected" (isLeft result)
         , testCase "Round trip engine histories through disk" $
             withSaveFile $ \path -> do
-                let (nextState, events) = Engine.step initialState Input.Right
-                forM_ [(events, nextState), ([], initialState)] $ \(savedEvents, expectedState) -> do
+                let (nextState, events) = Engine.step MessageFixtures.initialState Input.Right
+                forM_ [(events, nextState), ([], MessageFixtures.initialState)] $ \(savedEvents, expectedState) -> do
                     written <- Save.save path savedEvents
                     loaded <- Save.load path
                     assertBool "Expected writing to succeed" (written == Right ())
                     assertBool "Expected the complete saved history" (loaded == Right savedEvents)
-                    assertBool "Expected replay to reproduce the resulting state" (fmap (Save.apply initialState) loaded == Right expectedState)
+                    assertBool "Expected replay to reproduce the resulting state" (fmap (Save.apply MessageFixtures.initialState) loaded == Right expectedState)
         , testCase "Round trip an interrupted conversation" $
             withSaveFile $ \path -> do
                 let (opened, started) = Engine.step npcState Input.Enter
@@ -753,7 +755,7 @@ stateTests =
                     Aeson.eitherDecode fixture == Right state
             , testCase "Load legacy single-map files" $
                 let encoded = "{\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\"],\"location\":{\"mapId\":\"overworld\",\"position\":{\"x\":1,\"y\":0}},\"name\":\"Guide\"}},\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"grass\"]]}}"
-                    expected = (gameState (Position 0 0) (filledWorld [[Ground, Grass]])){GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!"] [] (Location (MapId "overworld") (Position 1 0)) "Guide")}
+                    expected = (gameState (Position 0 0) (filledWorld [[Ground, Grass]])){GameState.messages = Messages Map.empty, GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!"] [] (Location (MapId "overworld") (Position 1 0)) "Guide")}
                  in assertBool "Expected the old world and NPC positions to belong to the overworld" $
                         Aeson.eitherDecode encoded == Right expected
             , testCase "Load missing cells" $
@@ -763,7 +765,8 @@ stateTests =
                 let encoded = "{\"conversation\":{\"lineIndex\":1,\"npcId\":\"guide\"},\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\",\"Visit my lab.\"],\"location\":{\"mapId\":\"overworld\",\"position\":{\"x\":1,\"y\":0}},\"name\":\"Guide\"}},\"playerDirection\":\"east\",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"maps\":{\"overworld\":{\"tiles\":[[\"ground\",\"grass\"]]}}}"
                     expected =
                         (gameState (Position 0 0) (filledWorld [[Ground, Grass]]))
-                            { GameState.conversation = Just (Conversation 1 (NpcId "guide"))
+                            { GameState.messages = Messages Map.empty
+                            , GameState.conversation = Just (Conversation 1 (NpcId "guide"))
                             , GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 1 0)) "Guide")
                             , GameState.playerDirection = East
                             }
@@ -778,7 +781,7 @@ stateTests =
             "Round trips"
             [ testCase "Conversation" $ forM_ [Conversation 0 (NpcId "guide"), Conversation 1 (NpcId "guide")] assertRoundTrip
             , testCase "Direction" $ forM_ [East, North, South, West] assertRoundTrip
-            , testCase "GameState" $ forM_ [initialState, npcState, npcState{GameState.conversation = Just (Conversation 1 (NpcId "guide"))}, warpState, fst (Engine.step warpState Input.Up)] assertRoundTrip
+            , testCase "GameState" $ forM_ [MessageFixtures.initialState, npcState, npcState{GameState.conversation = Just (Conversation 1 (NpcId "guide"))}, warpState, fst (Engine.step warpState Input.Up)] assertRoundTrip
             , testCase "Location" $ forM_ [Location (MapId "overworld") (Position 1 2), Location (MapId "room") (Position 0 1)] assertRoundTrip
             , testCase "MapId" $ forM_ [MapId "overworld", MapId "room"] assertRoundTrip
             , testCase "Npc" $ forM_ [Npc [] [] (Location (MapId "overworld") (Position 0 0)) "Guide", Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 2 1)) "Guide"] assertRoundTrip
@@ -823,7 +826,7 @@ stateTests =
     fixture =
         "{\"playerPosition\":{\"x\":2,\"y\":1},\"version\":1,\"maps\":{\"overworld\":{\"tiles\":[[\"ground\",\"wall\"],[\"water\",\"tall-grass\"]]}}}"
     sampleWorld = filledWorld [[TallGrass, Wall], [Ground, Water]]
-    state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
+    state = (gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])){GameState.messages = Messages Map.empty}
 
 tests :: TestTree
 tests = testGroup "Critters" [BattleEventTests.tests, BattleMessageTests.tests, BattlePersistenceTests.tests, BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, ExpressionTests.tests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, PlaybackTests.tests, saveTests, SceneTests.tests, SchemaTests.tests, StageTests.tests, stateTests, TurnEventTests.tests, tuiTests, warpTests]
@@ -922,7 +925,7 @@ tuiTests =
                 dialogueRows "First line\r\nSecond line\nHidden third line"
                     == [styled (Text.justifyLeft columns ' ' "First line"), styled (Text.justifyLeft columns ' ' "Second line")]
         , testCase "Skip redraws for identical frames" $
-            forM_ [initialState{GameState.partyOpen = True}, npcState, npcState{GameState.conversation = Just (Conversation 0 (NpcId "guide"))}] $ \state ->
+            forM_ [MessageFixtures.initialState{GameState.partyOpen = True}, npcState, npcState{GameState.conversation = Just (Conversation 0 (NpcId "guide"))}] $ \state ->
                 let rows = TUI.renderFrame state
                  in assertBool "Expected unchanged frames to produce no terminal output" $
                         Text.null (TUI.redraw rows rows)

@@ -15,6 +15,7 @@ import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (East))
 import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell qualified as Cell
+import Critters.Message qualified as Message
 import Critters.Save qualified as Save
 import Critters.State.Affliction (Affliction (..))
 import Critters.State.Battle (Battle (..), defaultBattle)
@@ -35,13 +36,14 @@ import Critters.State.Effect (Effect (..))
 import Critters.State.Encounter (Encounter (..))
 import Critters.State.EncounterEntry (EncounterEntry (..))
 import Critters.State.FlagId (FlagId (..))
-import Critters.State.GameState (GameState (..), initialState)
+import Critters.State.GameState (GameState (..))
 import Critters.State.GameState qualified as GameState
 import Critters.State.Interaction (Interaction (..))
 import Critters.State.Item (defaultItem)
 import Critters.State.Item qualified as Item
 import Critters.State.Location (Location (..))
 import Critters.State.MapId (MapId (..))
+import Critters.State.Message (BattleMessage (..), Presentation (..))
 import Critters.State.Move (Move (..), defaultMove)
 import Critters.State.Move qualified as Move
 import Critters.State.MoveEffect (MoveEffect (..), Target (..))
@@ -64,6 +66,7 @@ import Data.Aeson qualified as Aeson
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
+import MessageFixtures qualified as MessageFixtures
 import System.Timeout (timeout)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
@@ -97,7 +100,7 @@ animationTests =
         , testCase "Draw immediately when health is unchanged or a battle starts or ends" $
             let opened = start fixture
                 (menu, _) = Engine.step opened Input.Enter
-             in forM_ [(initialState, opened), (opened, initialState), (opened, opened), (opened, menu)] $ \(before, after) ->
+             in forM_ [(MessageFixtures.initialState, opened), (opened, MessageFixtures.initialState), (opened, opened), (opened, menu)] $ \(before, after) ->
                     assertBool "Expected one frame without an animation delay" $
                         TUI.animationFrames 12 before after == [TUI.renderFrame after]
         , testCase "Draw the final state when no animation frames are requested" $
@@ -112,13 +115,13 @@ animationTests =
                     TUI.animationFrames 12 before after == [TUI.renderFrame after]
         , testCase "Replace numeric damage messages in the TUI while retaining other battle messages" $
             let opened = start fixture
-                state = opened{GameState.battle = fmap (\active -> active{Battle.messages = ["leafling used Basic strike.", "stonekin lost 2 HP.", "leafling is poisoned.", "Victory."]}) opened.battle}
+                state = opened{GameState.battle = fmap (\active -> active{Battle.messages = [BattleMessage (Message.named "battleMoveUsed" [("species", Message.text "Leafling"), ("move", Message.text "Basic strike")]) Dialogue, BattleMessage (Message.named "battleDamage" [("species", Message.text "Stonekin"), ("amount", Message.numeric 2)]) HealthChange, BattleMessage (Message.named "statusInflicted" [("species", Message.text "Leafling"), ("status", Message.text "poison")]) Dialogue, BattleMessage (Message.named "battleVictory" [("opponent", Message.reference active.definition.name)]) Dialogue]}) opened.battle}
                 update = BattleUpdate (maybe defaultBattle id state.battle) Nothing Nothing Nothing
                 messages = TUI.eventMessages 0 (Event.BattleChanged update) opened state
                 frames = concatMap (\message -> TUI.dialogueFrames 1 message opened state) messages
                 drawings = map (Text.concat . map (Text.concat . map (.glyph))) frames
              in assertBool "Expected move, status and outcome messages with both combatants' health bars" $
-                    messages == ["Leafling used Basic strike.", "Leafling is poisoned.", "You defeated Battle"]
+                    messages == ["Leafling used Basic strike.", "Leafling is affected by poison.", "You defeated Battle"]
                         && all (\drawing -> not (Text.isInfixOf "lost 2 HP." drawing) && Text.count ("[" <> Text.replicate 16 "█" <> "]") drawing == 2) drawings
         ]
   where
@@ -163,23 +166,11 @@ encounterTests =
 
 fixture :: GameState
 fixture =
-    initialState
+    MessageFixtures.initialState
         { GameState.combat =
             defaultCombat
                 { CombatConfig.battles = Map.singleton "practice" defaultDefinition{BattleDefinition.opponents = [basicCritter 10 2 10 "stonekin"]}
                 , CombatConfig.items = Map.singleton "tonic" defaultItem{Item.healing = 5}
-                , CombatConfig.messages =
-                    Map.fromList
-                        [ ("stageEnemySubject", "Opposing {species}")
-                        , ("stageFell", "{subject}'s {stat} fell by {amount} {if(amount == 1, stageSingular, stagePlural)} ({beforeStage} → {afterStage}).")
-                        , ("stageMaximum", "{subject}'s {stat} cannot go any higher.")
-                        , ("stageMinimum", "{subject}'s {stat} cannot go any lower.")
-                        , ("stagePlayerSubject", "Your {species}")
-                        , ("stagePlural", "stages")
-                        , ("stageRose", "{subject}'s {stat} rose by {amount} {if(amount == 1, stageSingular, stagePlural)} ({beforeStage} → {afterStage}).")
-                        , ("stageSingular", "stage")
-                        , ("stageUnchanged", "{subject}'s {stat} stayed unchanged ({afterStage}).")
-                        ]
                 , CombatConfig.moves = Map.singleton (MoveId "strike") defaultMove{Move.maxUses = 5, Move.power = 5}
                 , CombatConfig.rules = defaultRules{Rules.damageFormula = Expression "power"}
                 , CombatConfig.species = Map.fromList [("leafling", definition), ("stonekin", definition)]
@@ -206,7 +197,7 @@ itemTests =
         , testCase "Ineffective items consume neither stock nor a turn" $
             let opened = start fixture{GameState.inventory = Map.singleton "tonic" 1}
                 result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseItem "tonic" 0))
-             in assertBool "Expected a visible rejection without any resource change" (result.party == opened.party && result.inventory == opened.inventory && fmap (.turn) result.battle == Just 0 && maybe False (any (Text.isInfixOf "no effect") . (.messages)) result.battle)
+             in assertBool "Expected a visible rejection without any resource change" (result.party == opened.party && result.inventory == opened.inventory && fmap (.turn) result.battle == Just 0 && maybe False (any (Text.isInfixOf "no effect" . GameState.renderMessage result . (.message)) . (.messages)) result.battle)
         , testCase "Capture a configured opponent and preserve its state" $
             let opened = start capturable
                 result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseItem "capsule" (-1)))
@@ -380,12 +371,12 @@ snapshotTests =
                 definition = defaultDefinition{BattleDefinition.opponents = [critter]}
                 config = defaultCombat{CombatConfig.species = Map.singleton "leafling" defaultSpecies, CombatConfig.battles = Map.singleton "practice" definition}
                 active = defaultBattle{Battle.config = config, Battle.definition = definition, Battle.opponentParty = [critter], Battle.participants = [0]}
-                state = initialState{GameState.battle = Just active, GameState.combat = config, GameState.party = Party [critter]}
+                state = MessageFixtures.initialState{GameState.battle = Just active, GameState.combat = config, GameState.party = Party [critter]}
              in assertBool "Expected the battle configuration snapshot and phase to persist" (Aeson.eitherDecode (Aeson.encode state) == Right state)
         , testCase "Replay facts without validating commands or resetting other state" $
             let critter = basicCritter 10 2 10 "leafling"
                 active = defaultBattle{Battle.opponentParty = [critter]}
-                starting = initialState{GameState.party = Party [critter], GameState.partyOpen = True}
+                starting = MessageFixtures.initialState{GameState.party = Party [critter], GameState.partyOpen = True}
                 update = BattleUpdate active (Just (Map.singleton "tonic" 2)) Nothing (Just 42)
                 result = Engine.applyEvent starting (Event.BattleChanged update)
              in assertBool "Expected exactly the recorded fields to change" (result == starting{GameState.battle = Just active, GameState.inventory = Map.singleton "tonic" 2, GameState.randomSeed = 42} && Aeson.eitherDecode (Aeson.encode (Event.BattleChanged update)) == Right (Event.BattleChanged update))
@@ -480,7 +471,7 @@ tests =
         , testGroup
             "Moves"
             [ testCase "Decode an independently written move type and defaults" $
-                assertBool "Expected configured move type and default targeting rules" (Aeson.eitherDecode @Move "{\"name\":\"Basic strike\",\"power\":20,\"type\":\"fire\"}" == Right defaultMove{Move.affinity = "fire"})
+                assertBool "Expected configured move type and default targeting rules" (Aeson.eitherDecode @Move "{\"name\":\"Basic strike\",\"power\":20,\"type\":\"fire\"}" == Right defaultMove{Move.affinity = "fire", Move.name = "Basic strike"})
             , testCase "Round trip conditional move effects" $
                 let move = defaultMove{Move.effects = [Chance 0.25 (InflictStatus Opponent "slow"), ChangeHealth Self (Expression "damage / 2"), ChangeStage Opponent "defense" (-1)]}
                  in assertBool "Expected all authored effects to survive serialization" (Aeson.eitherDecode (Aeson.encode move) == Right move)
@@ -643,9 +634,9 @@ viewTests =
             forM_ ["Trainer Fern", "Guide Moss"] $ \opponent ->
                 let configured = fixture{GameState.combat = fixture.combat{CombatConfig.species = Map.adjust (\definition -> definition{Species.name = "LeafLING"}) "leafling" fixture.combat.species}}
                     opened = start configured
-                    won = opened{GameState.battle = fmap (\active -> active{Battle.definition = active.definition{BattleDefinition.name = opponent}, Battle.messages = ["Victory."], Battle.outcome = Just Victory, Battle.phase = Finished}) opened.battle}
+                    won = opened{GameState.battle = fmap (\active -> active{Battle.definition = active.definition{BattleDefinition.name = opponent}, Battle.messages = [BattleMessage (Message.named "battleVictory" [("opponent", Message.text opponent)]) Dialogue], Battle.outcome = Just Victory, Battle.phase = Finished}) opened.battle}
                     drawing = map (Text.stripEnd . Text.concat . map (.glyph)) (TUI.renderFrame won)
-                    victory = Text.concat [cell.glyph | frame <- TUI.dialogueFrames 1 "Victory." opened won, row <- frame, cell <- row]
+                    victory = Text.concat [cell.glyph | frame <- TUI.dialogueFrames 1 (GameState.messageText won "battleVictory" [("opponent", Message.text opponent)]) opened won, row <- frame, cell <- row]
                     choosing = opened{GameState.battle = fmap (\active -> active{Battle.phase = SwitchMenu}) opened.battle}
                  in assertBool "Expected configured capitalization, capitalized fallback names and an opponent-specific victory message" $
                         take 1 drawing == [opponent]
@@ -655,12 +646,12 @@ viewTests =
                             && not (any (\prefix -> Text.isInfixOf prefix (Text.concat drawing)) ["Battle —", "Opponent:", "You:", "Victory."])
                             && Text.isInfixOf "> LeafLING  HP 20/20" (TUI.render choosing)
                             && Text.isInfixOf "1. LeafLING  Lv 2  HP 20/20" (TUI.render opened{GameState.battle = Nothing, GameState.partyOpen = True})
-        , testCase "Capitalize battle messages without changing their remaining casing" $
-            forM_ [("defense stage changed.", "Defense stage changed."), ("specialDefense stage changed.", "SpecialDefense stage changed."), ("recovered 2 HP with X-Ray.", "Recovered 2 HP with X-Ray."), ("", ""), ("HP remains 10/20.", "HP remains 10/20.")] $ \(message, expected) ->
+        , testCase "Preserve game-authored message casing" $
+            forM_ [("defense stage changed.", "defense stage changed."), ("specialDefense stage changed.", "specialDefense stage changed."), ("recovered 2 HP with X-Ray.", "recovered 2 HP with X-Ray."), ("", ""), ("HP remains 10/20.", "HP remains 10/20.")] $ \(message, expected) ->
                 let opened = start fixture
                     frames = TUI.dialogueFrames 1 message opened opened
                     dialogue frame = map (Text.strip . Text.dropEnd 1 . Text.drop 1 . Text.concat . map (.glyph)) (take 2 (drop (TUI.height - 3) frame))
-                 in assertBool "Expected sentence capitals while preserving identifiers, acronyms, names and empty messages" $
+                 in assertBool "Expected authored casing while preserving identifiers, acronyms, names and empty messages" $
                         map dialogue frames == [[expected, ""]]
         , testCase "Use the bottom option box for actions, moves and items"
             $ forM_

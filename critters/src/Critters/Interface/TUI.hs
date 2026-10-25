@@ -13,6 +13,7 @@ import Critters.Input.Direction (Direction (..))
 import Critters.Interface.TUI.Cell (Cell (..))
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Interface.TUI.Keyboard qualified as Keyboard
+import Critters.Message qualified as Message
 import Critters.State.ActiveInteraction (ActiveInteraction (..))
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.Battle qualified as Battle
@@ -25,6 +26,7 @@ import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState (..), conversationText, interactionText, npcAt, objectAt, world)
 import Critters.State.GameState qualified as GameState
 import Critters.State.Interaction qualified as Interaction
+import Critters.State.Message (BattleMessage (..), Presentation (..))
 import Critters.State.Object qualified as Object
 import Critters.State.Party qualified as Party
 import Critters.State.Position (Position (..))
@@ -85,22 +87,11 @@ awaitDialogueAdvance =
         Just (Input.Character 'q') -> exitSuccess
         _ -> awaitDialogueAdvance
 
-battleMessage :: GameState -> Text -> Text
-battleMessage state rawValue = case BattleCommon.contextFor state of
-    Just context
-        | value == "Victory." -> "You defeated " <> resolveText state context.battle.definition.name
-        | otherwise -> capitalize (speciesText context.battle.config (BattleCommon.allCritters BattleCommon.Enemy context <> BattleCommon.allCritters BattleCommon.Player context) value)
-    Nothing -> capitalize value
-  where
-    value = resolveText state rawValue
+battleMessage :: GameState -> BattleMessage -> Text
+battleMessage state = GameState.renderMessage state . (.message)
 
 resolveText :: GameState -> Text -> Text
 resolveText state value = either (error . Text.unpack) id (GameState.resolveText state value)
-
-capitalize :: Text -> Text
-capitalize value = case Text.uncons value of
-    Just (first, rest) -> Text.cons (toUpper first) rest
-    Nothing -> value
 
 data Context = Context
     { previousFrame :: [[Cell]]
@@ -108,17 +99,10 @@ data Context = Context
     , seenMessages :: Int
     }
 
-damageMessage :: Text -> Bool
-damageMessage message = case Text.stripSuffix " HP." amount of
-    Just digits -> not (Text.null prefix) && not (Text.null digits) && Text.all (\value -> value >= '0' && value <= '9') digits
-    Nothing -> False
-  where
-    (prefix, amount) = Text.breakOnEnd " lost " message
-
 -- | The move's dialogue stays visible throughout its health animation.
 dialogueFrames :: Int -> Text -> GameState -> GameState -> [[[Cell]]]
 dialogueFrames count message previous state =
-    animationFramesWith (\health -> renderFrameWithHealth health (Just (battleMessage state message))) count previous state
+    animationFramesWith (\health -> renderFrameWithHealth health (Just message)) count previous state
 
 drawFrames :: Context -> GameState -> [[[Cell]]] -> IO Context
 drawFrames previous state frames = do
@@ -136,16 +120,15 @@ eventMessages seen event previous state = case event of
     Event.BattleCombatantsSentOut -> case BattleCommon.contextFor state of
         Just context ->
             [ case side of
-                BattleCommon.Enemy -> context.battle.definition.name <> " sent out " <> name <> "."
-                BattleCommon.Player -> "Go, " <> name <> "!"
+                BattleCommon.Enemy -> GameState.messageText state "battleEnemySentOut" [("opponent", Message.reference context.battle.definition.name), ("species", Message.text (speciesName state context.battle.config critter))]
+                BattleCommon.Player -> GameState.messageText state "battlePlayerSentOut" [("species", Message.text (speciesName state context.battle.config critter))]
             | side <- [BattleCommon.Enemy, BattleCommon.Player]
             , Just critter <- [BattleCommon.active side context]
-            , let name = speciesName context.battle.config critter
             ]
         Nothing -> []
     _ ->
         if presents
-            then map (battleMessage state) (filter (\message -> not (Text.null message) && not (damageMessage message)) (drop seen current))
+            then filter (not . Text.null) (map (battleMessage state) (filter ((== Dialogue) . (.presentation)) (drop seen current)))
             else []
   where
     current = maybe [] (.messages) state.battle
@@ -170,11 +153,11 @@ height = 24
 initialContext :: Context
 initialContext = Context [] Nothing 0
 
-input :: FilePath -> IO Input
-input logPath = do
+input :: GameState -> FilePath -> IO Input
+input state logPath = do
     Keyboard.input >>= \case
         Just userInput -> pure userInput
-        Nothing -> writeLog initialContext logPath "Unrecognized input." >> input logPath
+        Nothing -> writeLog initialContext logPath (GameState.messageText state "debugUnrecognizedInput" []) >> input state logPath
 
 output :: Context -> GameState -> IO Context
 output previous state = do
@@ -247,7 +230,7 @@ renderBattleWithHealth health dialogue state = case BattleCommon.contextFor stat
                 message = case drop active.introductionIndex dialogueLines of
                     line : _ -> line
                     [] -> ""
-             in renderIntroduction (maybe message id dialogue) state
+             in renderIntroduction (maybe (resolveText state message) id dialogue) state
     Just context ->
         case dialogue of
             Just message -> take (height - 4) (details <> renderText height "") <> renderDialogue message
@@ -257,11 +240,10 @@ renderBattleWithHealth health dialogue state = case BattleCommon.contextFor stat
       where
         active = context.battle
         choices = [(if index == active.selected then "> " else "  ") <> label | (index, label) <- zip [0 ..] labels]
-        critters = BattleCommon.allCritters BattleCommon.Player context
         details =
             renderText 6 (Text.intercalate "\n" [resolveText state active.definition.name, "", description BattleCommon.Enemy context, gauge BattleCommon.Enemy context, description BattleCommon.Player context, gauge BattleCommon.Player context])
                 <> renderText 5 ""
-        labels = map (resolveText state . (if partySelection then speciesText active.config critters else id) . fst) (BattleMenu.entries state)
+        labels = map fst (BattleMenu.entries state)
         menuHeight = height - length details
         offset = max 0 (active.selected - menuHeight + 1)
         options = renderOptions active.selected labels
@@ -269,10 +251,9 @@ renderBattleWithHealth health dialogue state = case BattleCommon.contextFor stat
   where
     description side context = case BattleCommon.active side context of
         Nothing -> "—"
-        Just critter -> speciesName context.battle.config critter <> "  Lv " <> number critter.level <> "  HP " <> number (hitPoints side critter) <> "/" <> number critter.maxHitPoints <> maybe "" (\status -> "  [" <> status.status <> "]") critter.battleProfile.status
+        Just critter -> GameState.messageText state "combatantDetails" [("species", Message.text (speciesName state context.battle.config critter)), ("level", Message.numeric critter.level), ("hp", Message.numeric (hitPoints side critter)), ("maxHP", Message.numeric critter.maxHitPoints), ("statusSuffix", Message.text (maybe "" (\status -> GameState.messageText state "combatantStatus" [("status", Message.reference ("{combat.statuses." <> status.status <> ".name}"))]) critter.battleProfile.status))]
     gauge side context = maybe "" (\critter -> healthBar (hitPoints side critter) critter.maxHitPoints) (BattleCommon.active side context)
     hitPoints side critter = maybe critter.hitPoints id (lookup side health)
-    number value = from (toLazyText (decimal value))
 
 renderChoices :: GameState -> ActiveInteraction -> [[Cell]]
 renderChoices state active =
@@ -355,7 +336,7 @@ renderFrameWithHealth health dialogue state
 -- | Introduction and send-out dialogue precede combatant details and options.
 renderIntroduction :: Text -> GameState -> [[Cell]]
 renderIntroduction message state =
-    renderText (height - 4) heading <> renderDialogue (resolveText state message)
+    renderText (height - 4) heading <> renderDialogue message
   where
     heading = maybe "" (resolveText state . (.definition.name)) state.battle
 
@@ -379,21 +360,14 @@ renderParty state =
   where
     critters = state.party.members
     entries = case critters of
-        [] -> ["Your party is empty"]
+        [] -> [GameState.messageText state "partyEmpty" []]
         _ -> zipWith entry [1 ..] critters
     entry index critter =
-        number index
-            <> ". "
-            <> speciesName state.combat critter
-            <> "  Lv "
-            <> number critter.level
-            <> "  HP "
-            <> number critter.hitPoints
-            <> "/"
-            <> number critter.maxHitPoints
-    heading = "Party — " <> number (length critters) <> " / " <> number state.maxPartySize
-    number :: Int -> Text
-    number value = from (toLazyText (decimal value))
+        GameState.messageText
+            state
+            "partyMember"
+            [("index", Message.numeric index), ("species", Message.text (speciesName state state.combat critter)), ("level", Message.numeric critter.level), ("hp", Message.numeric critter.hitPoints), ("maxHP", Message.numeric critter.maxHitPoints)]
+    heading = GameState.messageText state "partyHeading" [("count", Message.numeric (length critters)), ("maximum", Message.numeric state.maxPartySize)]
 
 renderRow :: [Cell] -> Text
 renderRow [] = ""
@@ -431,19 +405,12 @@ renderTextColumns columns rowCount message = map row $ take rowCount (wrapped <>
              in line : if Text.null rest then [] else wrap rest
     wrapped = concatMap wrap (Text.splitOn "\n" plain)
 
-speciesName :: Config.CombatConfig -> Critter.Critter -> Text
-speciesName config critter = case Map.lookup identifier config.species of
-    Just definition | not (Text.null definition.name) -> definition.name
-    _ -> capitalize identifier
-  where
-    identifier = critter.species
-
-speciesText :: Config.CombatConfig -> [Critter.Critter] -> Text -> Text
-speciesText config critters message = foldr replace message critters
-  where
-    replace critter value = case Text.stripPrefix (critter.species <> " ") value of
-        Just rest -> speciesName config critter <> " " <> rest
-        Nothing -> value
+speciesName :: GameState -> Config.CombatConfig -> Critter.Critter -> Text
+speciesName state config critter = case Map.lookup critter.species config.species of
+    Just definition | not (Text.null definition.name) -> resolveText state definition.name
+    _ -> case Text.uncons critter.species of
+        Just (first, rest) -> Text.cons (toUpper first) rest
+        Nothing -> critter.species
 
 width :: Int
 width = 32

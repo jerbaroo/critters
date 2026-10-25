@@ -211,16 +211,16 @@ eventsForEffects state = fmap snd . foldM apply (state, [])
     apply (current, events) effect = do
         event <- case effect of
             Effect.GiveCritter critter
-                | not (Map.null current.combat.species) && not (BattleCommon.validCritter current.combat critter) -> Left "That critter has invalid combat data."
+                | not (Map.null current.combat.species) && not (BattleCommon.validCritter current.combat critter) -> Left (GameState.messageText current "effectInvalidCritter" [])
                 | length current.party.members < current.maxPartySize -> Right (Event.CritterReceived critter)
-                | otherwise -> Left "Your party is full."
+                | otherwise -> Left (GameState.messageText current "partyFull" [])
             Effect.GiveItem identifier count
                 | count > 0 && Map.member identifier current.combat.items && count <= maxBound - Map.findWithDefault 0 identifier current.inventory -> Right (Event.InventoryChanged identifier (Map.findWithDefault 0 identifier current.inventory + count))
-                | otherwise -> Left "That item or count is invalid."
+                | otherwise -> Left (GameState.messageText current "effectInvalidItem" [])
             Effect.HealParty -> Right (Event.PartyChanged (BattleCommon.healParty 1 current.party))
             Effect.RemoveObject identifier
                 | Map.member identifier current.objects -> Right (Event.ObjectRemoved identifier)
-                | otherwise -> Left "That object is no longer available."
+                | otherwise -> Left (GameState.messageText current "effectObjectUnavailable" [])
             Effect.SetFlag identifier value -> Right (Event.FlagChanged identifier value)
             Effect.StartBattle identifier -> Event.BattleStarted <$> BattleEngine.beginBattle current identifier
         pure (applyEvent current event, events <> [event])
@@ -302,7 +302,7 @@ startInteraction state script
             Right events -> events
     | otherwise =
         [ Event.InteractionStarted
-            (ActiveInteraction 0 script (if length script.dialogue <= 1 && not (null script.choices) then Just 0 else Nothing))
+            (ActiveInteraction 0 state.messages script (if length script.dialogue <= 1 && not (null script.choices) then Just 0 else Nothing))
         ]
 
 -- | Interpret an input and return the resulting state and recorded facts.
@@ -338,14 +338,14 @@ walkNpc :: GameState -> NpcId -> [Position] -> Either Text [Event]
 walkNpc state identifier path = snd <$> foldM stepNpc (state, []) path
   where
     stepNpc (current, events) destination = do
-        npc <- maybe (Left "That NPC is not available.") Right (Map.lookup identifier current.npcs)
+        npc <- maybe (Left (GameState.messageText current "effectNpcUnavailable" [])) Right (Map.lookup identifier current.npcs)
         let origin = npc.location
             Position oldX oldY = origin.position
             Position newX newY = destination
             onMap = current{GameState.playerMap = origin.mapId}
             playerBlocks = current.playerMap == origin.mapId && current.playerPosition == destination
         if abs (from @Int @Integer newX - from @Int @Integer oldX) + abs (from @Int @Integer newY - from @Int @Integer oldY) /= 1 || playerBlocks || not (canStand onMap destination)
-            then Left "That NPC walking path is blocked or has a nonadjacent step."
+            then Left (GameState.messageText current "effectNpcPathBlocked" [])
             else
                 let event = Event.NpcMoved identifier origin{Location.position = destination}
                  in Right (applyEvent current event, events <> [event])

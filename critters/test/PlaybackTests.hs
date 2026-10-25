@@ -11,6 +11,7 @@ import Critters.Interface (Interface (..))
 import Critters.Interface qualified as Interface
 import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell qualified as Cell
+import Critters.Message qualified as Message
 import Critters.Run (playEvents)
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
@@ -22,6 +23,7 @@ import Critters.State.CombatConfig (CombatConfig (..))
 import Critters.State.CombatConfig qualified as CombatConfig
 import Critters.State.GameState (GameState (..))
 import Critters.State.GameState qualified as GameState
+import Critters.State.Message (BattleMessage (..), Presentation (..))
 import Critters.State.MoveId (MoveId (..))
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Map.Strict qualified as Map
@@ -59,7 +61,7 @@ tests =
             inputs <- newIORef (0 :: Int)
             let interface =
                     Interface
-                        { Interface.input = \_ -> modifyIORef' inputs (+ 1) >> pure Input.Enter
+                        { Interface.input = \_ _ -> modifyIORef' inputs (+ 1) >> pure Input.Enter
                         , Interface.log = \_ _ _ -> pure ()
                         , Interface.output = \context _ -> pure context
                         , Interface.outputEvent = \context event state -> do
@@ -86,8 +88,8 @@ tests =
                             firstCount = maybe 0 (length . (.messages)) hit.battle
                             secondMessages = TUI.eventMessages firstCount second hit retaliation
                             secondCount = maybe 0 (length . (.messages)) retaliation.battle
-                            firstFrames = TUI.dialogueFrames 4 "leafling used Basic strike." opened hit
-                            secondFrames = TUI.dialogueFrames 4 "stonekin used Basic strike." hit retaliation
+                            firstFrames = TUI.dialogueFrames 4 "Leafling used Basic strike." opened hit
+                            secondFrames = TUI.dialogueFrames 4 "Stonekin used Basic strike." hit retaliation
                         assertBool "Expected independent move sentences and no repeated text at turn completion" $
                             firstMessages == ["Leafling used Basic strike."]
                                 && secondMessages == ["Stonekin used Basic strike."]
@@ -103,7 +105,7 @@ tests =
                     _ -> assertFailure "Expected two move events followed by turn completion"
         , testCase "Replace options with one bottom dialogue box and restore them in the final frame" $
             let opened = start fixture
-                frames = TUI.dialogueFrames 3 "leafling used Basic strike." opened opened
+                frames = TUI.dialogueFrames 3 "Leafling used Basic strike." opened opened
                 ordinary = frameText (TUI.renderFrame opened)
              in assertBool "Expected a bordered dialogue panel without selectable battle options" $
                     all (\frame -> viewport frame && showsDialogue "Leafling used Basic strike." frame && not (Text.isInfixOf "> Moves" (frameText frame))) frames
@@ -112,9 +114,9 @@ tests =
         , testCase "Wrap dialogue by words and terminal columns within the border" $
             let opened = start fixture
              in forM_
-                    [ (Text.replicate 57 "a" <> " word", ["A" <> Text.replicate 56 "a", "word"])
+                    [ (Text.replicate 57 "a" <> " word", [Text.replicate 57 "a", "word"])
                     , (Text.replicate 29 "界" <> " word", [Text.replicate 29 "界", "word"])
-                    , (Text.replicate 60 "e\x0301" <> " word", ["E\x0301" <> Text.replicate 59 "e\x0301", "word"])
+                    , (Text.replicate 60 "e\x0301" <> " word", [Text.replicate 60 "e\x0301", "word"])
                     ]
                     $ \(message, expected) ->
                         let frames = TUI.dialogueFrames 1 message opened opened
@@ -129,7 +131,7 @@ tests =
                     all (\event -> null (TUI.eventMessages 0 event finished menu)) events
         , testCase "Repeated identical moves remain visible on the next turn" $
             let opened = start fixture
-                old = opened{GameState.battle = fmap (\active -> active{Battle.messages = ["leafling used Basic strike."]}) opened.battle}
+                old = opened{GameState.battle = fmap (\active -> active{Battle.messages = [BattleMessage (Message.named "battleMoveUsed" [("species", Message.text "Leafling"), ("move", Message.text "Basic strike")]) Dialogue]}) opened.battle}
              in case old.battle of
                     Just active ->
                         let event = MoveUsed Player (MoveId "strike") (BattleUpdate active Nothing Nothing Nothing)

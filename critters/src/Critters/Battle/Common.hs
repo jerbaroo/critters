@@ -11,8 +11,11 @@ module Critters.Battle.Common (
     chooseWeighted,
     Context (..),
     contextFor,
+    critterName,
     displayName,
     emit,
+    emitDamage,
+    emitKey,
     endBattle,
     evaluate,
     healParty,
@@ -40,11 +43,13 @@ import Critters.Event (Event)
 import Critters.Event qualified as Event
 import Critters.Expression (Expression)
 import Critters.Expression qualified as Expression
+import Critters.Message qualified as Message
 import Critters.Number (integer, number)
 import Critters.Stage qualified as Stage
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
+import Critters.State.BattleDefinition qualified as Definition
 import Critters.State.BattleOutcome (BattleOutcome (..))
 import Critters.State.BattlePhase (BattlePhase (Finished))
 import Critters.State.BattleProfile qualified as Profile
@@ -54,6 +59,7 @@ import Critters.State.Critter (Critter)
 import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState)
 import Critters.State.GameState qualified as GameState
+import Critters.State.Message (Argument, BattleMessage (..), Message, MessageKey, Presentation (..))
 import Critters.State.Move (Move)
 import Critters.State.Move qualified as Move
 import Critters.State.MoveId (MoveId (..))
@@ -149,13 +155,22 @@ data Context = Context
 contextFor :: GameState -> Maybe Context
 contextFor state = (\activeBattle -> Context activeBattle state.inventory state.maxPartySize state.party state.randomSeed) <$> state.battle
 
+critterName :: Critter -> Argument
+critterName critter = Message.reference ("{combat.species." <> critter.species <> ".name}")
+
 displayName :: Context -> Critter -> Text
 displayName context critter = case Map.lookup critter.species context.battle.config.species of
     Just definition | not (Text.null definition.name) -> definition.name
     _ -> critter.species
 
-emit :: Text -> State Context ()
-emit message = State.modify $ \context -> context{battle = context.battle{Battle.messages = context.battle.messages <> [message]}}
+emit :: Message -> State Context ()
+emit message = State.modify $ \context -> context{battle = context.battle{Battle.messages = context.battle.messages <> [BattleMessage message Dialogue]}}
+
+emitDamage :: Message -> State Context ()
+emitDamage message = State.modify $ \context -> context{battle = context.battle{Battle.messages = context.battle.messages <> [BattleMessage message HealthChange]}}
+
+emitKey :: MessageKey -> [(Text, Argument)] -> State Context ()
+emitKey key = emit . Message.named key
 
 endBattle :: BattleOutcome -> State Context ()
 endBattle outcome = do
@@ -164,11 +179,8 @@ endBattle outcome = do
             { battle = context.battle{Battle.outcome = Just outcome, Battle.phase = Finished, Battle.selected = 0}
             , party = if outcome == Defeat then healParty ((rulesFor context).defeatRecovery) context.party else context.party
             }
-    emit $ case outcome of
-        Captured -> "Capture complete."
-        Defeat -> "Defeat."
-        Escaped -> "Escaped safely."
-        Victory -> "Victory."
+    context <- State.get
+    emitKey (case outcome of Captured -> "battleCaptureComplete"; Defeat -> "battleDefeat"; Escaped -> "battleEscaped"; Victory -> "battleVictory") [("opponent", Message.reference context.battle.definition.name)]
 
 evaluate :: Expression -> [(Text, Double)] -> Double
 evaluate formula environment = either (error . from) id (Expression.evaluateNumber (Map.fromList environment) formula)

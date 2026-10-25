@@ -44,7 +44,7 @@ loadHistory path =
 
 loop :: FilePath -> Interface a -> a -> FilePath -> [Event] -> GameState -> IO ()
 loop logPath interface context saveFile history state = do
-    userInput <- interface.input logPath
+    userInput <- interface.input state logPath
     let command = Engine.commandFor state userInput
         events = maybe [] (Engine.eventsFor state) command
     nextHistory <- saveEvents saveFile history events

@@ -31,10 +31,10 @@ tests =
         "Battle events"
         [ testCase "Decode independently specified move, turn and legacy update events"
             $ forM_
-                [ ("{\"type\":\"move-used\",\"side\":\"player\",\"move\":\"strike\",\"update\":{\"battle\":{\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}", MoveUsed Player (MoveId "strike") update)
-                , ("{\"type\":\"move-used\",\"side\":\"enemy\",\"move\":\"strike\",\"update\":{\"battle\":{\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}", MoveUsed Enemy (MoveId "strike") update)
-                , ("{\"type\":\"turn-completed\",\"update\":{\"battle\":{\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}", TurnCompleted update)
-                , ("{\"type\":\"battle-changed\",\"update\":{\"battle\":{\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}", BattleChanged update)
+                [ ("{\"type\":\"move-used\",\"side\":\"player\",\"move\":\"strike\",\"update\":{\"battle\":{\"messageTemplates\":{},\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}", MoveUsed Player (MoveId "strike") update)
+                , ("{\"type\":\"move-used\",\"side\":\"enemy\",\"move\":\"strike\",\"update\":{\"battle\":{\"messageTemplates\":{},\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}", MoveUsed Enemy (MoveId "strike") update)
+                , ("{\"type\":\"turn-completed\",\"update\":{\"battle\":{\"messageTemplates\":{},\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}", TurnCompleted update)
+                , ("{\"type\":\"battle-changed\",\"update\":{\"battle\":{\"messageTemplates\":{},\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}", BattleChanged update)
                 ]
             $ \(encoded, expected) ->
                 assertBool "Expected the documented event fields, sides and resolved update" $
@@ -42,10 +42,10 @@ tests =
                         && Aeson.eitherDecode @Aeson.Value encoded == Right (Aeson.toJSON expected)
         , testCase "Reject incomplete move and turn records"
             $ forM_
-                [ "{\"type\":\"move-used\",\"move\":\"strike\",\"update\":{\"battle\":{\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}"
-                , "{\"type\":\"move-used\",\"side\":\"player\",\"update\":{\"battle\":{\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}"
+                [ "{\"type\":\"move-used\",\"move\":\"strike\",\"update\":{\"battle\":{\"messageTemplates\":{},\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}"
+                , "{\"type\":\"move-used\",\"side\":\"player\",\"update\":{\"battle\":{\"messageTemplates\":{},\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}"
                 , "{\"type\":\"move-used\",\"side\":\"player\",\"move\":\"strike\"}"
-                , "{\"type\":\"move-used\",\"side\":\"spectator\",\"move\":\"strike\",\"update\":{\"battle\":{\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}"
+                , "{\"type\":\"move-used\",\"side\":\"spectator\",\"move\":\"strike\",\"update\":{\"battle\":{\"messageTemplates\":{},\"opponentParty\":[{\"hitPoints\":7,\"level\":2,\"maxHitPoints\":10,\"species\":\"stonekin\"}]}}}"
                 , "{\"type\":\"turn-completed\"}"
                 ]
             $ \encoded -> assertBool "Expected invalid event records to fail decoding" (isLeft (Aeson.eitherDecode @Event encoded))

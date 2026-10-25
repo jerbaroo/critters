@@ -232,13 +232,6 @@
           },
           "type": "object"
         },
-        "messages": {
-          "$comment": "Game-defined battle message templates with expression placeholders.",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object"
-        },
         "moves": {
           "$comment": "Move definitions.",
           "additionalProperties": {
@@ -1259,6 +1252,13 @@
                   "minimum": -9223372036854775808,
                   "type": "integer"
                 },
+                "messageTemplates": {
+                  "$comment": "Message catalogue captured with the selected script.",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
                 "script": {
                   "$comment": "The interaction selected when this conversation started.",
                   "$ref": "#/$defs/Interaction"
@@ -1278,7 +1278,8 @@
                 }
               },
               "required": [
-                "script"
+                "script",
+                "messageTemplates"
               ],
               "type": "object"
             }
@@ -1356,10 +1357,75 @@
                   "minimum": -9223372036854775808,
                   "type": "integer"
                 },
+                "messageTemplates": {
+                  "$comment": "Root message catalogue captured at battle entry.",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
                 "messages": {
                   "$comment": "Messages from the most recent action.",
                   "items": {
-                    "type": "string"
+                    "$comment": "BattleMessage",
+                    "properties": {
+                      "message": {
+                        "$comment": "Message identity and arguments.\nMessage",
+                        "properties": {
+                          "arguments": {
+                            "$comment": "Local message arguments.",
+                            "additionalProperties": {
+                              "anyOf": [
+                                {
+                                  "$comment": "FiniteDouble"
+                                },
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "$comment": "MessageReference",
+                                  "properties": {
+                                    "reference": {
+                                      "$comment": "Explicit template reference.",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "reference"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "type": "object"
+                          },
+                          "key": {
+                            "$comment": "Game-defined message key.",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "key"
+                        ],
+                        "type": "object"
+                      },
+                      "presentation": {
+                        "$comment": "Presentation independent of wording.",
+                        "oneOf": [
+                          {
+                            "const": "dialogue"
+                          },
+                          {
+                            "const": "health-change"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "presentation",
+                      "message"
+                    ],
+                    "type": "object"
                   },
                   "type": "array"
                 },
@@ -1474,6 +1540,9 @@
                   "type": "integer"
                 }
               },
+              "required": [
+                "messageTemplates"
+              ],
               "type": "object"
             }
           ]
@@ -1663,6 +1732,13 @@
           "maximum": 9223372036854775807,
           "minimum": -9223372036854775808,
           "type": "integer"
+        },
+        "messages": {
+          "$comment": "All game-facing message templates.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "npcs": {
           "$comment": "Stationary NPCs.",
@@ -1890,6 +1966,13 @@
                       "minimum": -9223372036854775808,
                       "type": "integer"
                     },
+                    "messageTemplates": {
+                      "$comment": "Message catalogue captured with the selected script.",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
                     "script": {
                       "$comment": "The interaction selected when this conversation started.",
                       "$ref": "#/$defs/Interaction"
@@ -1909,7 +1992,8 @@
                     }
                   },
                   "required": [
-                    "script"
+                    "script",
+                    "messageTemplates"
                   ],
                   "type": "object"
                 }
@@ -1992,10 +2076,75 @@
                       "minimum": -9223372036854775808,
                       "type": "integer"
                     },
+                    "messageTemplates": {
+                      "$comment": "Root message catalogue captured at battle entry.",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
                     "messages": {
                       "$comment": "Messages from the most recent action.",
                       "items": {
-                        "type": "string"
+                        "$comment": "BattleMessage",
+                        "properties": {
+                          "message": {
+                            "$comment": "Message identity and arguments.\nMessage",
+                            "properties": {
+                              "arguments": {
+                                "$comment": "Local message arguments.",
+                                "additionalProperties": {
+                                  "anyOf": [
+                                    {
+                                      "$comment": "FiniteDouble"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "$comment": "MessageReference",
+                                      "properties": {
+                                        "reference": {
+                                          "$comment": "Explicit template reference.",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "reference"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  ]
+                                },
+                                "type": "object"
+                              },
+                              "key": {
+                                "$comment": "Game-defined message key.",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "key"
+                            ],
+                            "type": "object"
+                          },
+                          "presentation": {
+                            "$comment": "Presentation independent of wording.",
+                            "oneOf": [
+                              {
+                                "const": "dialogue"
+                              },
+                              {
+                                "const": "health-change"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "presentation",
+                          "message"
+                        ],
+                        "type": "object"
                       },
                       "type": "array"
                     },
@@ -2110,6 +2259,9 @@
                       "type": "integer"
                     }
                   },
+                  "required": [
+                    "messageTemplates"
+                  ],
                   "type": "object"
                 }
               ]
@@ -2333,6 +2485,18 @@
               "maximum": 9223372036854775807,
               "minimum": -9223372036854775808,
               "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "properties": {
+            "messages": {
+              "$comment": "All game-facing message templates.",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             }
           },
           "type": "object"

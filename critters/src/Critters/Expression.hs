@@ -5,10 +5,11 @@ function evaluates only the selected branch, which may yield text or a number.
 Placeholders use identifiers such as stage or targetHP; text values are
 supplied by the caller rather than written as string literals in expressions.
 -}
-module Critters.Expression (evaluate, evaluateNumber, Expression (..), interpolate, Value (..), variables) where
+module Critters.Expression (evaluate, evaluateNumber, evaluateWith, Expression (..), interpolate, interpolateWith, Value (..), variables) where
 
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
+import Critters.Codec qualified as NumberCodec
 import Data.Aeson qualified as Aeson
 import Data.Char (isAlpha, isAlphaNum, isDigit)
 import Data.List (nub)
@@ -20,7 +21,14 @@ import Text.ParserCombinators.ReadP qualified as P
 import Witch (from, tryFrom)
 
 evaluate :: Map Text Value -> Expression -> Either Text Value
-evaluate environment expression = parse expression >>= compute
+evaluate environment = evaluateWith (\name -> maybe (Left ("Unknown expression placeholder: " <> name)) Right (Map.lookup name environment))
+
+-- | Evaluate a numeric rule, rejecting text results and invalid placeholders.
+evaluateNumber :: Map Text Double -> Expression -> Either Text Double
+evaluateNumber environment expression = evaluate (Map.map NumberValue environment) expression >>= numeric
+
+evaluateWith :: (Text -> Either Text Value) -> Expression -> Either Text Value
+evaluateWith resolve expression = parse expression >>= compute
   where
     compute = \case
         Binary operator left right -> do
@@ -56,19 +64,15 @@ evaluate environment expression = parse expression >>= compute
                 ("sqrt", [value]) -> Right (sqrt value)
                 _ -> Left "Invalid expression function."
         Number value -> checked value
-        Variable name -> case Map.lookup name environment of
-            Just (NumberValue value) -> checked value
-            Just value -> Right value
-            Nothing -> Left ("Unknown expression placeholder: " <> name)
+        Variable name ->
+            resolve name >>= \case
+                NumberValue value -> checked value
+                value -> Right value
     checked value
         | isNaN value || isInfinite value = Left "An expression produced a non-finite number."
         | otherwise = Right (NumberValue value)
     integer value = either (const (Left "Rounded expression value is out of range.")) Right (tryFrom @Integer @Double value)
     truth value = if value then 1 else 0
-
--- | Evaluate a numeric rule, rejecting text results and invalid placeholders.
-evaluateNumber :: Map Text Double -> Expression -> Either Text Double
-evaluateNumber environment expression = evaluate (Map.map NumberValue environment) expression >>= numeric
 
 newtype Expression = Expression Text
     deriving stock (Eq, Show)
@@ -79,7 +83,10 @@ Whole numbers render without a decimal suffix. Inserted text is literal;
 malformed braces, unknown placeholders, and invalid expressions return errors.
 -}
 interpolate :: Map Text Value -> Text -> Either Text Text
-interpolate environment = go
+interpolate environment = interpolateWith (\name -> maybe (Left ("Unknown expression placeholder: " <> name)) Right (Map.lookup name environment))
+
+interpolateWith :: (Text -> Either Text Value) -> Text -> Either Text Text
+interpolateWith resolve = go
   where
     go remaining =
         let (prefix, suffix) = Text.break (\character -> character == '{' || character == '}') remaining
@@ -91,7 +98,7 @@ interpolate environment = go
                     case Text.uncons afterExpression of
                         Nothing -> Left "Unclosed expression placeholder in template."
                         Just (_, rest) -> do
-                            value <- evaluate environment (Expression source)
+                            value <- evaluateWith resolve (Expression source)
                             rendered <- go rest
                             Right (prefix <> render value <> rendered)
     render (NumberValue value) =
@@ -120,13 +127,26 @@ parse (Expression source) = case P.readP_to_S (spaces *> comparison <* P.eof) (f
                             _ -> P.pfail
                   )
             P.<++ do
-                first <- P.satisfy (\value -> isAlpha value || value == '_')
-                rest <- P.munch (\value -> isAlphaNum value || value == '_')
+                first <- identifier
+                rest <- P.many (P.char '.' *> segment)
                 spaces
-                let name = from (first : rest)
+                let name = Text.intercalate "." (first : rest)
                 (Call name <$> arguments) P.<++ pure (Variable name)
     comparison = P.chainl1 additive (operator ["<=", ">=", "==", "!=", "<", ">"])
+    identifier = do
+        first <- P.satisfy (\value -> isAlpha value || value == '_')
+        rest <- P.munch (\value -> isAlphaNum value || value == '_')
+        pure (from (first : rest))
     lexeme parser = parser <* spaces
+    segment =
+        ( do
+            value <- P.munch1 (\character -> isAlphaNum character || character `elem` ['_', '-'])
+            remaining <- P.look
+            case remaining of
+                '.' : _ -> pure (from value)
+                _ -> P.pfail
+        )
+            P.<++ identifier
     multiplicative = P.chainl1 unary (operator ["*", "/"])
     operator values = P.choice [Binary value <$ symbol (from value) | value <- values]
     power = do
@@ -154,6 +174,7 @@ data Value
     = NumberValue Double
     | TextValue Text
     deriving stock (Eq, Show)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Value)
 
 variables :: Expression -> Either Text [Text]
 variables formula = nub . collect <$> parse formula
@@ -170,3 +191,9 @@ instance HasCodec Expression where
         validate source
             | Text.length source > 2048 = Left "Expressions must not exceed 2048 characters."
             | otherwise = let formula = Expression source in either (Left . from) (const (Right formula)) (parse formula)
+
+instance HasCodec Value where
+    codec = Codec.dimapCodec (either NumberValue TextValue) encode (Codec.eitherCodec NumberCodec.finiteDoubleCodec Codec.codec)
+      where
+        encode (NumberValue value) = Left value
+        encode (TextValue value) = Right value

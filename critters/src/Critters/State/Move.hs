@@ -13,7 +13,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 
 defaultMove :: Move
-defaultMove = Move 1 "normal" "attack" 0 "defense" [] Map.empty 1 0 1 "Basic strike" 20 0
+defaultMove = Move 1 "normal" "attack" 0 "defense" [] Map.empty 1 0 1 "{messages.battleFallbackMoveName}" 20 0
 
 data Move = Move
     { accuracy :: Double

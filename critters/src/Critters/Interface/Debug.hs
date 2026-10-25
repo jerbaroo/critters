@@ -6,6 +6,7 @@ import Critters.Battle.Common qualified as BattleCommon
 import Critters.Battle.Menu qualified as BattleMenu
 import Critters.Input (Input)
 import Critters.Input qualified as Input
+import Critters.Message qualified as Message
 import Critters.State.ActiveInteraction qualified as Active
 import Critters.State.Battle qualified as Battle
 import Critters.State.BattleDefinition qualified as Definition
@@ -14,15 +15,15 @@ import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState (..), conversationText, interactionText)
 import Critters.State.GameState qualified as GameState
 import Critters.State.Interaction qualified as Interaction
+import Critters.State.Message (BattleMessage (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
 import System.Exit (exitSuccess)
 import System.IO (hFlush, isEOF, stdout)
-import Witch (from)
 
-input :: FilePath -> IO Input
-input logPath = do
+input :: GameState -> FilePath -> IO Input
+input state logPath = do
     TextIO.putStr "> "
     hFlush stdout
     isEOF >>= \case
@@ -30,17 +31,17 @@ input logPath = do
         False ->
             Input.parse <$> TextIO.getLine >>= \case
                 Just userInput -> pure userInput
-                Nothing -> writeLog () logPath "Unrecognized input." >> input logPath
+                Nothing -> writeLog () logPath (GameState.messageText state "debugUnrecognizedInput" []) >> input state logPath
 
 output :: () -> GameState -> IO ()
 output _ state = do
     forM_ (BattleCommon.contextFor state) $ \context -> do
         let active = context.battle
-        TextIO.putStrLn ("Battle: " <> resolveText state active.definition.name)
+        TextIO.putStrLn (GameState.messageText state "debugBattleHeading" [("opponent", Message.reference active.definition.name)])
         forM_ [BattleCommon.Enemy, BattleCommon.Player] $ \side ->
-            forM_ (BattleCommon.active side context) $ \critter -> TextIO.putStrLn (BattleCommon.displayName context critter <> " HP " <> from (show critter.hitPoints) <> "/" <> from (show critter.maxHitPoints))
-        mapM_ (TextIO.putStrLn . resolveText state) active.messages
-        forM_ (zip [0 ..] (BattleMenu.entries state)) $ \(index, (label, _)) -> TextIO.putStrLn ((if index == active.selected then "> " else "  ") <> resolveText state label)
+            forM_ (BattleCommon.active side context) $ \critter -> TextIO.putStrLn (GameState.messageText state "debugCombatant" [("species", BattleCommon.critterName critter), ("hp", Message.numeric critter.hitPoints), ("maxHP", Message.numeric critter.maxHitPoints)])
+        mapM_ (TextIO.putStrLn . GameState.renderMessage state . (.message)) active.messages
+        forM_ (zip [0 ..] (BattleMenu.entries state)) $ \(index, (label, _)) -> TextIO.putStrLn ((if index == active.selected then "> " else "  ") <> label)
     mapM_ (TextIO.putStrLn . resolveText state) (interactionText state <|> conversationText state)
     forM_ state.activeInteraction $ \active ->
         case active.selectedChoice of

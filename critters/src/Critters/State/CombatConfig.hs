@@ -33,7 +33,6 @@ data CombatConfig = CombatConfig
     { battles :: Map Text BattleDefinition
     , encounters :: [Encounter]
     , items :: Map Text Item
-    , messages :: Map Text Text
     , moves :: Map MoveId Move
     , rules :: Rules
     , species :: Map Text Species
@@ -50,7 +49,6 @@ defaultCombat =
         { battles = Map.empty
         , encounters = []
         , items = Map.empty
-        , messages = Map.empty
         , moves = Map.empty
         , rules = defaultRules
         , species = Map.empty
@@ -68,7 +66,6 @@ instance HasCodec CombatConfig where
                         <$> Codec.optionalFieldWithOmittedDefault "battles" (Map.empty) "Named, scripted or encounter battles." Codec..= (.battles)
                         <*> Codec.optionalFieldWithOmittedDefault "encounters" ([]) "Encounter tables." Codec..= (.encounters)
                         <*> Codec.optionalFieldWithOmittedDefault "items" (Map.empty) "Battle item definitions." Codec..= (.items)
-                        <*> Codec.optionalFieldWithOmittedDefault "messages" Map.empty "Game-defined battle message templates with expression placeholders." Codec..= (.messages)
                         <*> Codec.optionalFieldWithOmittedDefault "moves" (Map.empty) "Move definitions." Codec..= (.moves)
                         <*> Codec.optionalFieldWithOmittedDefault "rules" (defaultRules) "Game-defined combat and progression rules." Codec..= (.rules)
                         <*> Codec.optionalFieldWithOmittedDefault "species" (Map.empty) "Species stats, types and learnsets." Codec..= (.species)

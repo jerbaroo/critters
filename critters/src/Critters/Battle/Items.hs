@@ -4,6 +4,7 @@ import Control.Monad.Trans.State.Strict (State)
 import Control.Monad.Trans.State.Strict qualified as State
 import Critters.Battle.Common (Context (..), Side (..))
 import Critters.Battle.Common qualified as Common
+import Critters.Message qualified as Message
 import Critters.Number (integer, number)
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.Battle (Battle (..))
@@ -16,6 +17,7 @@ import Critters.State.Critter (Critter)
 import Critters.State.Critter qualified as Critter
 import Critters.State.Item (Item)
 import Critters.State.Item qualified as Item
+import Critters.State.Message (Message)
 import Critters.State.Move qualified as Move
 import Critters.State.Party (Party (..))
 import Critters.State.Rules qualified as Rules
@@ -41,7 +43,7 @@ escape = do
         then Common.endBattle Escaped
         else do
             State.modify $ \current -> current{Common.battle = current.battle{Battle.escapeAttempts = current.battle.escapeAttempts + 1}}
-            Common.emit "The escape attempt failed."
+            Common.emitKey "escapeFailed" []
 
 restore :: Context -> Item -> Critter -> Critter
 restore context item critter =
@@ -75,7 +77,7 @@ useItem identifier target = do
                 else case drop target context.party.members of
                     critter : _ -> do
                         State.modify (Common.setCritter Player target (restore context item critter))
-                        Common.emit ("Used " <> (if item.name == "" then identifier else item.name) <> " on " <> critter.species <> ".")
+                        Common.emitKey "itemUsed" [("item", Message.reference ("{combat.items." <> identifier <> ".name}")), ("species", Common.critterName critter)]
                     [] -> pure ()
   where
     capture item = do
@@ -99,27 +101,27 @@ useItem identifier target = do
                             ]
                 captured <- Common.chance probability
                 if not captured
-                    then Common.emit "The capture attempt failed."
+                    then Common.emitKey "captureFailed" []
                     else do
                         State.modify $ \current ->
                             let updated = Common.setCritter Enemy (Common.activeIndex Enemy current) critter{Critter.hitPoints = 0} current
                              in updated{Common.party = Party (current.party.members <> [critter]), Common.battle = updated.battle{Battle.capturedOpponents = current.battle.capturedOpponents <> [Common.activeIndex Enemy current]}}
-                        Common.emit ("Captured " <> critter.species <> ".")
+                        Common.emitKey "captureSucceeded" [("species", Common.critterName critter)]
                         remaining <- State.gets (any Common.usable . Common.allCritters Enemy)
                         if remaining then pure () else Common.endBattle Captured
 
-validateItem :: Context -> Text -> Int -> Either Text Item
+validateItem :: Context -> Text -> Int -> Either Message Item
 validateItem context identifier target = do
-    item <- maybe (Left "That item is not defined.") Right (Map.lookup identifier context.battle.config.items)
-    if Map.findWithDefault 0 identifier context.inventory <= 0 then Left "You have none of that item." else pure ()
+    item <- maybe (Left (Message.named "itemUndefined" [])) Right (Map.lookup identifier context.battle.config.items)
+    if Map.findWithDefault 0 identifier context.inventory <= 0 then Left (Message.named "itemUnavailable" []) else pure ()
     if item.captureBonus > 0
         then do
-            if not context.battle.definition.allowCapture then Left "Capture is not permitted in this battle." else pure ()
-            if length context.party.members >= context.limit then Left "Your party is full." else pure ()
-            if maybe False Common.usable (Common.active Enemy context) then Right item else Left "There is no opponent to capture."
+            if not context.battle.definition.allowCapture then Left (Message.named "captureForbidden" []) else pure ()
+            if length context.party.members >= context.limit then Left (Message.named "partyFull" []) else pure ()
+            if maybe False Common.usable (Common.active Enemy context) then Right item else Left (Message.named "captureNoOpponent" [])
         else
             if target < 0
-                then Left "Choose a party member."
+                then Left (Message.named "itemChoosePartyMember" [])
                 else case drop target context.party.members of
                     critter : _ | restore context item critter /= critter -> Right item
-                    _ -> Left "That item would have no effect."
+                    _ -> Left (Message.named "itemNoEffect" [])

@@ -47,6 +47,7 @@ build-type:         Simple
 -- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-doc-files:
     CHANGELOG.md
+    docs/messages.md
     docs/battles.md
 
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
@@ -97,6 +98,7 @@ library
         Critters.Interface.TUI.Cell
         Critters.Interface.TUI.Keyboard
         Critters.InterfaceType
+        Critters.Message
         Critters.Number
         Critters.Pretty
         Critters.Run
@@ -128,6 +130,7 @@ library
         Critters.State.Item
         Critters.State.Location
         Critters.State.MapId
+        Critters.State.Message
         Critters.State.Move
         Critters.State.MoveEffect
         Critters.State.MoveId
@@ -218,6 +221,7 @@ test-suite critters-test
         BattleTests
         ExpressionTests
         InteractionTests
+        MessageFixtures
         PlaybackTests
         SceneTests
         SchemaTests

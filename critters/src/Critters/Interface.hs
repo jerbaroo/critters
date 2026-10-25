@@ -11,7 +11,7 @@ import Data.Text (Text)
 import Prelude (FilePath, IO, pure, ($))
 
 data Interface a = Interface
-    { input :: FilePath -> IO Input
+    { input :: GameState -> FilePath -> IO Input
     , log :: a -> FilePath -> Text -> IO ()
     , output :: a -> GameState -> IO a
     , outputEvent :: a -> Event -> GameState -> IO a

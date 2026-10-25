@@ -6,6 +6,7 @@ import Critters.Battle.Action (Action (..))
 import Critters.Battle.Turn qualified as Turn
 import Critters.Engine qualified as Engine
 import Critters.Event (Event (..))
+import Critters.Message qualified as Message
 import Critters.State.Affliction (Affliction (..))
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
@@ -20,6 +21,7 @@ import Critters.State.Critter (Critter (..), basicCritter)
 import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState (..))
 import Critters.State.GameState qualified as GameState
+import Critters.State.Message (BattleMessage (..), Message (..), Presentation (..))
 import Critters.State.Move qualified as Move
 import Critters.State.MoveId (MoveId (..))
 import Critters.State.Party (Party (..))
@@ -85,11 +87,11 @@ tests =
                     actors events == [Player, Enemy]
                         && playerHealth completed == [20]
                         && enemyHealth completed == Just [10]
-                        && fmap (length . filter (== "The move missed.") . (.messages)) completed.battle == Just 2
+                        && fmap (length . filter ((== "battleMoveMissed") . (.message.key)) . (.messages)) completed.battle == Just 2
                         && map (Map.lookup (MoveId "strike") . (.battleProfile.remainingUses)) completed.party.members == [Just 4]
         , testCase "Record a used move even when its snapshot matches the previous messages" $
             let opened = start fixture{GameState.combat = fixture.combat{CombatConfig.moves = Map.adjust (\move -> move{Move.accuracy = 0, Move.maxUses = 0}) (MoveId "strike") fixture.combat.moves}}
-                repeated = opened{GameState.battle = fmap (\active -> active{Battle.messages = ["leafling used Basic strike.", "The move missed."]}) opened.battle}
+                repeated = opened{GameState.battle = fmap (\active -> active{Battle.messages = [BattleMessage (Message.named "battleMoveUsed" [("species", Message.text "Leafling"), ("move", Message.text "Basic strike")]) Dialogue, BattleMessage (Message.named "battleMoveMissed" []) Dialogue]}) opened.battle}
              in assertBool "Expected both moves to be recorded even without health, resource or message changes" $
                     actors (Turn.resolveAction repeated (UseMove (MoveId "strike"))) == [Player, Enemy]
         , testCase "Do not record a blocked action as a used move" $
@@ -100,7 +102,7 @@ tests =
              in assertBool "Expected only the opponent's move and no player move use" $
                     actors events == [Enemy]
                         && map (Map.lookup (MoveId "strike") . (.battleProfile.remainingUses)) completed.party.members == [Nothing]
-                        && maybe False (any (Text.isInfixOf "Unable to act") . (.messages)) completed.battle
+                        && maybe False (any (Text.isInfixOf "Unable to act" . GameState.renderMessage completed . (.message)) . (.messages)) completed.battle
         , testCase "Record item healing before the opponent's retaliation" $
             let opened = start fixture{GameState.inventory = Map.singleton "tonic" 1, GameState.party = Party [basicCritter 10 2 20 "leafling"]}
                 events = Turn.resolveAction opened (UseItem "tonic" 0)

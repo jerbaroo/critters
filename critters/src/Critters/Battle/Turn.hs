@@ -13,6 +13,7 @@ import Critters.Battle.Progression qualified as Progression
 import Critters.Battle.Status qualified as Status
 import Critters.Event (Event)
 import Critters.Event qualified as Event
+import Critters.Message qualified as Message
 import Critters.Number (number)
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
@@ -24,6 +25,7 @@ import Critters.State.BattleSide qualified as BattleSide
 import Critters.State.BattleUpdate (BattleUpdate (BattleUpdate))
 import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState)
+import Critters.State.Message (BattleMessage (..), Presentation (..))
 import Critters.State.Move qualified as Move
 import Critters.State.MoveId (MoveId)
 import Critters.State.Rules qualified as Rules
@@ -31,7 +33,6 @@ import Critters.State.Stage (StageValues (..))
 import Data.List (findIndex, nub)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
-import Witch (from)
 
 actionPriority :: Context -> Side -> Action -> Int
 actionPriority context side = \case
@@ -60,14 +61,14 @@ performMove side identifier = do
     context <- State.get
     case (Common.active side context, lookup identifier (Common.availableMoves side context)) of
         (Just attacker, Just move) -> do
-            Common.emit (attacker.species <> " used " <> move.name <> ".")
+            Common.emitKey "battleMoveUsed" [("species", Common.critterName attacker), ("move", Message.reference move.name)]
             when (move.maxUses > 0) $ Common.modifyActive side $ \critter ->
                 critter
                     { Critter.battleProfile = critter.battleProfile{Profile.remainingUses = Map.insert identifier (max 0 (Common.moveRemaining critter identifier move - 1)) critter.battleProfile.remainingUses}
                     }
             connected <- Common.chance (accuracyFor context side move)
             if not connected
-                then Common.emit "The move missed."
+                then Common.emitKey "battleMoveMissed" []
                 else do
                     hits <- if Map.null move.hitWeights then Common.chooseInt move.minHits move.maxHits else maybe move.minHits id <$> Common.chooseWeighted (Map.toAscList move.hitWeights)
                     sharedCritical <- if (Common.rulesFor context).criticalPerHit then pure False else criticalRoll move
@@ -89,7 +90,7 @@ performMove side identifier = do
                 Just defender | Common.usable defender -> do
                     connected <- if not firstHit && (Common.rulesFor context).accuracyPerHit then Common.chance (accuracyFor context side move) else pure True
                     if not connected
-                        then Common.emit "The move missed." >> pure 0
+                        then Common.emitKey "battleMoveMissed" [] >> pure 0
                         else do
                             critical <- if (Common.rulesFor context).criticalPerHit then criticalRoll move else pure sharedCritical
                             let rules = Common.rulesFor context
@@ -97,8 +98,8 @@ performMove side identifier = do
                             variance <- if rules.randomDamageMin == rules.randomDamageMax then pure rules.randomDamageMin else (\roll -> rules.randomDamageMin + roll * (rules.randomDamageMax - rules.randomDamageMin)) <$> Common.randomUnit
                             let amount = min defender.hitPoints (damageFor context side move multiplier variance)
                             Common.modifyActive (Common.opposite side) (\critter -> critter{Critter.hitPoints = max 0 (critter.hitPoints - amount)})
-                            when critical (Common.emit "Critical hit.")
-                            when (amount > 0) (Common.emit (defender.species <> " lost " <> from (show amount) <> " HP."))
+                            when critical (Common.emitKey "battleCriticalHit" [])
+                            when (amount > 0) (Common.emitDamage (Message.named "battleDamage" [("species", Common.critterName defender), ("amount", Message.numeric amount)]))
                             rest <- strike move (remaining - 1) sharedCritical False
                             pure (amount + rest)
                 _ -> pure 0
@@ -121,9 +122,9 @@ resolveAction state action = case Common.contextFor state of
     Just context | validAction context action -> State.evalState (runTurn action) context
     Just context | not (isJust context.battle.outcome) && context.battle.phase /= ReplacementMenu -> case action of
         UseItem identifier target -> case Items.validateItem context identifier target of
-            Left message -> Common.changedEvents state context{Common.battle = context.battle{Battle.messages = [message]}}
+            Left message -> Common.changedEvents state context{Common.battle = context.battle{Battle.messages = [BattleMessage message Dialogue]}}
             Right _ -> []
-        EscapeBattle -> Common.changedEvents state context{Common.battle = context.battle{Battle.messages = ["Escape is not permitted in this battle."]}}
+        EscapeBattle -> Common.changedEvents state context{Common.battle = context.battle{Battle.messages = [BattleMessage (Message.named "battleEscapeForbidden" []) Dialogue]}}
         _ -> []
     _ -> []
 
@@ -180,13 +181,13 @@ settle = do
                             mapM_ (switch Enemy) (findIndex Common.usable (Common.allCritters Enemy context))
                         when (maybe True (not . Common.usable) (Common.active Player context)) $ do
                             State.modify $ \current -> current{Common.battle = current.battle{Battle.phase = ReplacementMenu, Battle.selected = 0}}
-                            Common.emit "Choose another critter."
+                            Common.emitKey "battleChooseReplacement" []
 
 switch :: Side -> Int -> State Context ()
 switch side index = do
     State.modify $ \context -> context{Common.battle = update ((Common.rulesFor context).resetStagesOnSwitch) context.battle}
     context <- State.get
-    mapM_ (\critter -> Common.emit (critter.species <> " entered the battle.")) (Common.active side context)
+    mapM_ (\critter -> Common.emitKey "battleEntered" [("species", Common.critterName critter)]) (Common.active side context)
   where
     update reset current
         | side == Player = current{Battle.activePlayer = index, Battle.participants = nub (current.participants <> [index]), Battle.phase = ActionMenu, Battle.playerStages = if reset then StageValues Map.empty else current.playerStages}

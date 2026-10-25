@@ -5,6 +5,7 @@ import Control.Monad.Trans.State.Strict (State)
 import Control.Monad.Trans.State.Strict qualified as State
 import Critters.Battle.Common (Context (..), Side (..))
 import Critters.Battle.Common qualified as Common
+import Critters.Message qualified as Message
 import Critters.Number (integer, number)
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
@@ -20,7 +21,6 @@ import Critters.State.Species qualified as Species
 import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
-import Witch (from)
 
 experienceAt :: Rules -> Int -> Int
 experienceAt rules level = max 0 (integer (Common.evaluate rules.experienceFormula [("level", number level)]))
@@ -36,11 +36,11 @@ gain index amount = when (amount > 0) $ do
                 newLevel = foldl' (\current candidate -> if total >= experienceAt rules candidate then candidate else current) critter.level [critter.level + 1 .. rules.maxLevel]
                 progressed = learn context critter{Critter.battleProfile = profile{Profile.experience = total}} newLevel
             State.modify (Common.setCritter Player index progressed)
-            Common.emit (critter.species <> " gained " <> from (show amount) <> " experience.")
+            Common.emitKey "experienceGained" [("species", Common.critterName critter), ("amount", Message.numeric amount)]
             when (newLevel > critter.level) $ do
-                Common.emit (critter.species <> " reached level " <> from (show newLevel) <> ".")
+                Common.emitKey "levelReached" [("species", Common.critterName critter), ("level", Message.numeric newLevel)]
                 forM_ (filter (`notElem` Common.knownMoves context.battle critter) (Common.knownMoves context.battle progressed)) $ \identifier ->
-                    Common.emit (critter.species <> " learned " <> maybe "a move" (.name) (Map.lookup identifier context.battle.config.moves) <> ".")
+                    Common.emitKey "moveLearned" [("species", Common.critterName critter), ("move", Message.reference (maybe "{messages.moveUnknownName}" (.name) (Map.lookup identifier context.battle.config.moves)))]
         [] -> pure ()
 
 learn :: Context -> Critter -> Int -> Critter

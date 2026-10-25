@@ -8,6 +8,7 @@ import Critters.State.BattlePhase (BattlePhase (ActionMenu))
 import Critters.State.CombatConfig (CombatConfig, defaultCombat)
 import Critters.State.CombatConfig qualified as Config
 import Critters.State.Critter (Critter)
+import Critters.State.Message (BattleMessage, Messages (..))
 import Critters.State.Stage (StageDefinition (..), StageValues (..), stageDefinition)
 import Data.Aeson qualified as Aeson
 import Data.List (nub)
@@ -24,7 +25,8 @@ data Battle = Battle
     , escapeAttempts :: Int
     , initialSeed :: Maybe Int
     , introductionIndex :: Int
-    , messages :: [Text]
+    , messages :: [BattleMessage]
+    , messageTemplates :: Messages
     , opponentParty :: [Critter]
     , outcome :: Maybe BattleOutcome
     , participants :: [Int]
@@ -51,6 +53,7 @@ defaultBattle =
         , initialSeed = Nothing
         , introductionIndex = 0
         , messages = []
+        , messageTemplates = Messages Map.empty
         , opponentParty = []
         , outcome = Nothing
         , participants = []
@@ -77,6 +80,7 @@ instance HasCodec Battle where
                     <*> Codec.optionalFieldOrNull "initialSeed" "Random state at entry; absent in older histories." Codec..= (.initialSeed)
                     <*> Codec.optionalFieldWithOmittedDefault "introductionIndex" 0 "Current pre-battle dialogue line." Codec..= (.introductionIndex)
                     <*> Codec.optionalFieldWithOmittedDefault "messages" ([]) "Messages from the most recent action." Codec..= (.messages)
+                    <*> Codec.requiredField "messageTemplates" "Root message catalogue captured at battle entry." Codec..= (.messageTemplates)
                     <*> Codec.optionalFieldWithOmittedDefault "opponentParty" ([]) "Current opposing party." Codec..= (.opponentParty)
                     <*> Codec.optionalFieldOrNull "outcome" "Resolved outcome awaiting acknowledgement." Codec..= (.outcome)
                     <*> Codec.optionalFieldWithOmittedDefault "participants" ([]) "Player party indices that have participated." Codec..= (.participants)

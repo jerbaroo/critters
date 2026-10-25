@@ -41,45 +41,23 @@ There are no built-in stage definitions. Accessing an undefined stage raises a
 runtime error naming the missing stat. Saved battle stage values use the
 configuration snapshot captured when that battle began.
 
-## Stage-change messages
+## Messages
 
-Games supply stage-change wording in `combat.messages` and readable stat labels
-in `combat.statNames`. For example:
+All game-facing wording lives in the top-level `messages` catalogue, including
+battle logs, menus, party displays, dialogue, choices, and action feedback.
+Content refers to it with `{messages.KEY}`; local arguments and entity names use
+the same curly-brace syntax:
 
 ```json
 {
   "messages": {
-    "stageEnemySubject": "Opposing {species}",
-    "stageFell": "{subject}'s {stat} fell by {amount} {if(amount == 1, stageSingular, stagePlural)} ({beforeStage} → {afterStage}).",
-    "stageMaximum": "{subject}'s {stat} cannot go any higher.",
-    "stageMinimum": "{subject}'s {stat} cannot go any lower.",
-    "stagePlayerSubject": "Your {species}",
-    "stagePlural": "stages",
-    "stageRose": "{subject}'s {stat} rose by {amount} {if(amount == 1, stageSingular, stagePlural)} ({beforeStage} → {afterStage}).",
-    "stageSingular": "stage",
-    "stageUnchanged": "{subject}'s {stat} stayed unchanged ({afterStage})."
-  },
-  "statNames": {
-    "defense": "Defence"
+    "battleMoveUsed": "{species} used {move}.",
+    "rivalBattleName": "Rival {npcs.blue.name}",
+    "choiceBulbasaur": "{combat.species.bulbasaur.name}"
   }
 }
 ```
 
-Templates use the general `Critters.Expression` syntax inside braces. The engine
-chooses the template using the actual change after clamping. A blocked request
-uses `stageMinimum` or `stageMaximum`; a request of zero uses `stageUnchanged`.
-Subject templates receive the species display name as `{species}`.
-
-| Placeholder | Meaning |
-|---|---|
-| `subject`, `species`, `stat` | Affected team and critter, critter display name, stat display label |
-| `amount` | Actual number of stages changed, always nonnegative |
-| `before`, `after` | Numeric stages, usable in expressions |
-| `beforeStage`, `afterStage` | Stage text with a `+` for positive values |
-| `beforeMultiplier`, `afterMultiplier` | Multipliers evaluated using the game's stage definition |
-| `requested` | Signed change requested by the move |
-| `stageSingular`, `stagePlural` | Game-defined unit wording |
-
-The rendered text is recorded in the existing battle log and event history.
-Missing message templates or stat labels, malformed expressions, and unknown
-placeholders raise runtime errors instead of substituting fallback text.
+See [the complete message catalogue](critters/docs/messages.md) for each template,
+supported arguments, reference syntax, and rendered examples. Technical startup
+and invalid-config diagnostics remain in code.
