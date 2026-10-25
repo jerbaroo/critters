@@ -1,5 +1,6 @@
-module Critters.Run (run) where
+module Critters.Run (playEvents, run) where
 
+import Control.Monad (foldM)
 import Critters.CLI qualified as CLI
 import Critters.CLI.Options qualified as CLIOptions
 import Critters.Command qualified as Command
@@ -45,15 +46,25 @@ loop :: FilePath -> Interface a -> a -> FilePath -> [Event] -> GameState -> IO (
 loop logPath interface context saveFile history state = do
   userInput <- interface.input logPath
   let command = Engine.commandFor state userInput
-      (nextState, events) = Engine.step state userInput
-  nextContext <- interface.output context nextState
+      events = maybe [] (Engine.eventsFor state) command
+  nextHistory <- saveEvents saveFile history events
+  (playedContext, nextState) <- playEvents interface context state events
+  nextContext <- interface.output playedContext nextState
   interface.log nextContext logPath $ "Input: " <> pretty userInput
   interface.log nextContext logPath $ "Command: " <> maybe "Nothing" pretty command
   mapM_ (\event -> interface.log nextContext logPath $ "Event: " <> pretty event) events
-  nextHistory <- saveEvents saveFile history events
   case command of
     Just Command.Quit -> exitSuccess
     _ -> loop logPath interface nextContext saveFile nextHistory nextState
+
+-- | Apply recorded facts in order, allowing the interface to finish each one.
+playEvents :: Interface a -> a -> GameState -> [Event] -> IO (a, GameState)
+playEvents interface context state = foldM apply (context, state)
+  where
+    apply (previousContext, previousState) event = do
+      let nextState = Engine.applyEvent previousState event
+      nextContext <- interface.outputEvent previousContext event nextState
+      pure (nextContext, nextState)
 
 run :: IO ()
 run = do

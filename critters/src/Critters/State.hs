@@ -7,6 +7,7 @@ module Critters.State
     module Critters.State.BattleOutcome,
     module Critters.State.BattlePhase,
     module Critters.State.BattleProfile,
+    module Critters.State.BattleSide,
     module Critters.State.BattleUpdate,
     module Critters.State.Choice,
     module Critters.State.CombatConfig,
@@ -47,6 +48,7 @@ import Critters.State.BattleDefinition (BattleDefinition (..), defaultDefinition
 import Critters.State.BattleOutcome (BattleOutcome (..))
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.BattleProfile (BattleProfile (..), defaultProfile)
+import Critters.State.BattleSide (BattleSide (..))
 import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.Choice (Choice (..))
 import Critters.State.CombatConfig (CombatConfig (..), defaultCombat)

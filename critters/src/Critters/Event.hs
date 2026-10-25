@@ -6,11 +6,13 @@ import Critters.Input.Direction (Direction)
 import Critters.Pretty (Pretty (..))
 import Critters.State.ActiveInteraction (ActiveInteraction)
 import Critters.State.Battle (Battle)
+import Critters.State.BattleSide (BattleSide)
 import Critters.State.BattleUpdate (BattleUpdate)
 import Critters.State.Critter (Critter)
 import Critters.State.Critter qualified as Critter
 import Critters.State.FlagId (FlagId)
 import Critters.State.Location (Location)
+import Critters.State.MoveId (MoveId)
 import Critters.State.NpcId (NpcId)
 import Critters.State.ObjectId (ObjectId)
 import Critters.State.Party (Party)
@@ -25,7 +27,9 @@ import Witch (from)
 -- | An established fact. Validation happens before an event is produced.
 data Event
   = BattleChanged BattleUpdate
+  | BattleCombatantsSentOut
   | BattleEnded
+  | BattleIntroductionAdvanced Int
   | BattleStarted Battle
   | ConversationAdvanced Int
   | ConversationEnded
@@ -39,6 +43,8 @@ data Event
   | InteractionEnded
   | InteractionStarted ActiveInteraction
   | InventoryChanged Text Int
+  | MoveUsed BattleSide MoveId BattleUpdate
+  | NpcMoved NpcId Location
   | ObjectRemoved ObjectId
   | PartyChanged Party
   | PartyClosed
@@ -47,6 +53,7 @@ data Event
   | PlayerTurned Direction
   | PlayerWarped Location
   | RandomAdvanced Int
+  | TurnCompleted BattleUpdate
   deriving stock (Eq)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Event)
 
@@ -56,7 +63,9 @@ instance HasCodec Event where
       $ Codec.discriminatedUnionCodec "type" encode
       $ HashMap.fromList
         [ ("battle-changed", ("BattleChanged", Codec.mapToDecoder BattleChanged battleChanged)),
+          ("battle-combatants-sent-out", ("BattleCombatantsSentOut", pure BattleCombatantsSentOut)),
           ("battle-ended", ("BattleEnded", pure BattleEnded)),
+          ("battle-introduction-advanced", ("BattleIntroductionAdvanced", Codec.mapToDecoder BattleIntroductionAdvanced advanced)),
           ("battle-started", ("BattleStarted", Codec.mapToDecoder BattleStarted battleStarted)),
           ("conversation-advanced", ("ConversationAdvanced", Codec.mapToDecoder ConversationAdvanced advanced)),
           ("conversation-ended", ("ConversationEnded", pure ConversationEnded)),
@@ -70,6 +79,8 @@ instance HasCodec Event where
           ("interaction-ended", ("InteractionEnded", pure InteractionEnded)),
           ("interaction-started", ("InteractionStarted", Codec.mapToDecoder InteractionStarted interaction)),
           ("inventory-changed", ("InventoryChanged", Codec.mapToDecoder (uncurry InventoryChanged) inventoryChanged)),
+          ("move-used", ("MoveUsed", Codec.mapToDecoder (\(side, identifier, update) -> MoveUsed side identifier update) moveUsed)),
+          ("npc-moved", ("NpcMoved", Codec.mapToDecoder (uncurry NpcMoved) npcMoved)),
           ("object-removed", ("ObjectRemoved", Codec.mapToDecoder ObjectRemoved removed)),
           ("party-changed", ("PartyChanged", Codec.mapToDecoder PartyChanged partyChanged)),
           ("party-closed", ("PartyClosed", pure PartyClosed)),
@@ -77,7 +88,8 @@ instance HasCodec Event where
           ("player-moved", ("PlayerMoved", Codec.mapToDecoder PlayerMoved moved)),
           ("player-turned", ("PlayerTurned", Codec.mapToDecoder PlayerTurned turned)),
           ("player-warped", ("PlayerWarped", Codec.mapToDecoder PlayerWarped warped)),
-          ("random-advanced", ("RandomAdvanced", Codec.mapToDecoder RandomAdvanced randomized))
+          ("random-advanced", ("RandomAdvanced", Codec.mapToDecoder RandomAdvanced randomized)),
+          ("turn-completed", ("TurnCompleted", Codec.mapToDecoder TurnCompleted battleChanged))
         ]
     where
       advanced :: JSONObjectCodec Int
@@ -95,7 +107,9 @@ instance HasCodec Event where
       chosen = Codec.requiredField "choiceIndex" "The selected interaction choice index."
       encode = \case
         BattleChanged update -> ("battle-changed", Codec.mapToEncoder update battleChanged)
+        BattleCombatantsSentOut -> ("battle-combatants-sent-out", pure ())
         BattleEnded -> ("battle-ended", pure ())
+        BattleIntroductionAdvanced index -> ("battle-introduction-advanced", Codec.mapToEncoder index advanced)
         BattleStarted active -> ("battle-started", Codec.mapToEncoder active battleStarted)
         ConversationAdvanced index -> ("conversation-advanced", Codec.mapToEncoder index advanced)
         ConversationEnded -> ("conversation-ended", pure ())
@@ -109,6 +123,8 @@ instance HasCodec Event where
         InteractionEnded -> ("interaction-ended", pure ())
         InteractionStarted active -> ("interaction-started", Codec.mapToEncoder active interaction)
         InventoryChanged identifier count -> ("inventory-changed", Codec.mapToEncoder (identifier, count) inventoryChanged)
+        MoveUsed side identifier update -> ("move-used", Codec.mapToEncoder (side, identifier, update) moveUsed)
+        NpcMoved identifier destination -> ("npc-moved", Codec.mapToEncoder (identifier, destination) npcMoved)
         ObjectRemoved identifier -> ("object-removed", Codec.mapToEncoder identifier removed)
         PartyChanged value -> ("party-changed", Codec.mapToEncoder value partyChanged)
         PartyClosed -> ("party-closed", pure ())
@@ -117,6 +133,7 @@ instance HasCodec Event where
         PlayerTurned direction -> ("player-turned", Codec.mapToEncoder direction turned)
         PlayerWarped destination -> ("player-warped", Codec.mapToEncoder destination warped)
         RandomAdvanced seed -> ("random-advanced", Codec.mapToEncoder seed randomized)
+        TurnCompleted update -> ("turn-completed", Codec.mapToEncoder update battleChanged)
       encountered :: JSONObjectCodec Int
       encountered = Codec.requiredField "steps" "Eligible encounter steps."
       given :: JSONObjectCodec Critter
@@ -127,6 +144,14 @@ instance HasCodec Event where
       inventoryChanged = (,) <$> Codec.requiredField "item" "Item identifier." Codec..= fst <*> Codec.requiredField "count" "Resolved remaining count." Codec..= snd
       moved :: JSONObjectCodec Position
       moved = Codec.requiredField "position" "The player's position after moving."
+      moveUsed :: JSONObjectCodec (BattleSide, MoveId, BattleUpdate)
+      moveUsed =
+        (,,)
+          <$> Codec.requiredField "side" "The side that used the move." Codec..= (\(side, _, _) -> side)
+          <*> Codec.requiredField "move" "The move that was used." Codec..= (\(_, identifier, _) -> identifier)
+          <*> battleChanged Codec..= (\(_, _, update) -> update)
+      npcMoved :: JSONObjectCodec (NpcId, Location)
+      npcMoved = (,) <$> Codec.requiredField "npc" "The NPC that moved." Codec..= fst <*> Codec.requiredField "location" "Resolved NPC location." Codec..= snd
       partyChanged :: JSONObjectCodec Party
       partyChanged = Codec.requiredField "party" "Resolved party."
       progressed :: JSONObjectCodec Int
@@ -145,7 +170,9 @@ instance HasCodec Event where
 instance Pretty Event where
   pretty = \case
     BattleChanged _ -> "BattleChanged"
+    BattleCombatantsSentOut -> "BattleCombatantsSentOut"
     BattleEnded -> "BattleEnded"
+    BattleIntroductionAdvanced index -> "BattleIntroductionAdvanced " <> from (toLazyText (decimal index))
     BattleStarted _ -> "BattleStarted"
     ConversationAdvanced index -> from $ toLazyText $ "ConversationAdvanced " <> decimal index
     ConversationEnded -> "ConversationEnded"
@@ -159,6 +186,8 @@ instance Pretty Event where
     InteractionEnded -> "InteractionEnded"
     InteractionStarted _ -> "InteractionStarted"
     InventoryChanged identifier count -> "InventoryChanged " <> identifier <> " " <> from (toLazyText (decimal count))
+    MoveUsed side identifier _ -> "MoveUsed " <> pretty side <> " " <> pretty identifier
+    NpcMoved identifier destination -> "NpcMoved " <> pretty identifier <> " " <> pretty destination
     ObjectRemoved identifier -> "ObjectRemoved " <> pretty identifier
     PartyChanged _ -> "PartyChanged"
     PartyClosed -> "PartyClosed"
@@ -167,3 +196,4 @@ instance Pretty Event where
     PlayerTurned direction -> "PlayerTurned " <> pretty direction
     PlayerWarped destination -> "PlayerWarped " <> pretty destination
     RandomAdvanced seed -> from $ toLazyText $ "RandomAdvanced " <> decimal seed
+    TurnCompleted _ -> "TurnCompleted"

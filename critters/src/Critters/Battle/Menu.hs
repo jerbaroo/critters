@@ -20,7 +20,8 @@ entries state = case Common.contextFor state of
   Nothing -> []
   Just context -> case Battle.battlePhase (Common.contextBattle context) of
     ActionMenu -> [("Moves", GoTo MoveMenu), ("Party", GoTo SwitchMenu), ("Items", GoTo ItemMenu)] <> [("Escape", Perform EscapeBattle) | Definition.definitionAllowEscape (Battle.battleDefinition (Common.contextBattle context))]
-    Finished -> [("Continue", Finish)]
+    Finished -> []
+    Introduction -> []
     ItemMenu -> mapMaybe (itemEntry context) (Map.toAscList (inventory state))
     ItemTargetMenu -> partyEntries context True
     MoveMenu -> [(Move.moveName move <> resource move identifier context, Perform (UseMove identifier)) | (identifier, move) <- Common.availableMoves Common.Player context]
@@ -41,4 +42,4 @@ entries state = case Common.contextFor state of
       | Move.moveMaxUses move == 0 = ""
       | otherwise = "  " <> from (show (maybe 0 (\critter -> Common.moveRemaining critter identifier move) (Common.active Common.Player context))) <> "/" <> from (show (Move.moveMaxUses move))
 
-data Selection = Finish | GoTo BattlePhase | Perform Action | PickItem Text
+data Selection = GoTo BattlePhase | Perform Action | PickItem Text

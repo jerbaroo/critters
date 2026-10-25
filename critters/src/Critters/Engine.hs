@@ -15,7 +15,7 @@ import Critters.Selection qualified as Selection
 import Critters.State.ActiveInteraction (ActiveInteraction (..))
 import Critters.State.Battle (Battle)
 import Critters.State.Battle qualified as Battle
-import Critters.State.BattlePhase (BattlePhase (Finished))
+import Critters.State.BattlePhase (BattlePhase (ActionMenu, Finished))
 import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.Choice qualified as Choice
 import Critters.State.CombatConfig qualified as Config
@@ -28,6 +28,7 @@ import Critters.State.GameState qualified as GameState
 import Critters.State.Interaction (Interaction (..))
 import Critters.State.Location qualified as Location
 import Critters.State.Npc qualified as Npc
+import Critters.State.NpcId (NpcId)
 import Critters.State.Object qualified as Object
 import Critters.State.Party (Party (..))
 import Critters.State.Position (Position (..))
@@ -39,6 +40,7 @@ import Data.List (find)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
+import Witch (from)
 
 advanceInteraction :: GameState -> ActiveInteraction -> [Event]
 advanceInteraction state active
@@ -54,11 +56,16 @@ advanceInteraction state active
     dialogue = interactionDialogue (activeScript active)
     index = activeDialogueIndex active
 
+applyBattleUpdate :: GameState -> BattleUpdate -> GameState
+applyBattleUpdate state update = state{battle = Just (updateBattle update), inventory = fromMaybe (inventory state) (updateInventory update), party = fromMaybe (party state) (updateParty update), randomSeed = fromMaybe (randomSeed state) (updateSeed update)}
+
 -- | Apply an established fact without checking command rules again.
 applyEvent :: GameState -> Event -> GameState
 applyEvent state = \case
-  Event.BattleChanged update -> state{battle = Just (updateBattle update), inventory = fromMaybe (inventory state) (updateInventory update), party = fromMaybe (party state) (updateParty update), randomSeed = fromMaybe (randomSeed state) (updateSeed update)}
+  Event.BattleChanged update -> applyBattleUpdate state update
+  Event.BattleCombatantsSentOut -> state{battle = fmap (\active -> active{Battle.battlePhase = ActionMenu}) (battle state)}
   Event.BattleEnded -> state{battle = Nothing}
+  Event.BattleIntroductionAdvanced index -> state{battle = fmap (\active -> active{Battle.battleIntroductionIndex = index}) (battle state)}
   Event.BattleStarted active -> state{battle = Just active, randomSeed = fromMaybe (randomSeed state) (Battle.battleInitialSeed active)}
   Event.ConversationAdvanced index -> state{conversation = fmap (\active -> active{lineIndex = index}) (conversation state)}
   Event.ConversationEnded -> state{conversation = Nothing}
@@ -72,6 +79,8 @@ applyEvent state = \case
   Event.InteractionEnded -> state{activeInteraction = Nothing}
   Event.InteractionStarted active -> state{activeInteraction = Just active}
   Event.InventoryChanged identifier count -> state{inventory = Map.insert identifier count (inventory state)}
+  Event.MoveUsed _ _ update -> applyBattleUpdate state update
+  Event.NpcMoved identifier destination -> state{npcs = Map.adjust (\npc -> npc{Npc.location = destination}) identifier (npcs state)}
   Event.ObjectRemoved identifier -> state{objects = Map.delete identifier (objects state)}
   Event.PartyChanged value -> state{party = value}
   Event.PartyClosed -> state{partyOpen = False}
@@ -81,6 +90,7 @@ applyEvent state = \case
   Event.PlayerWarped destination ->
     state{conversation = Nothing, playerMap = Location.mapId destination, playerPosition = Location.position destination}
   Event.RandomAdvanced seed -> state{randomSeed = seed}
+  Event.TurnCompleted update -> applyBattleUpdate state update
 
 canStand :: GameState -> Position -> Bool
 canStand state destination =
@@ -150,7 +160,14 @@ eventsFor :: GameState -> Command -> [Event]
 eventsFor state command
   | partyOpen state = [Event.PartyClosed | command == CloseMenu]
   | Just active <- battle state =
-      if command == ConfirmSelection && Battle.battlePhase active == Finished then finishBattle state active else BattleEngine.eventsFor state command
+      if command == ConfirmSelection && Battle.battlePhase active == Finished
+        then finishBattle state active
+        else
+          let events = BattleEngine.eventsFor state command
+              resolved = foldl' applyEvent state events
+           in events <> case battle resolved of
+                Just completed | not (null events) && Battle.battlePhase completed == Finished -> finishBattle resolved completed
+                _ -> []
   | Just active <- activeInteraction state = interactionEvents state active command
   | otherwise = case command of
       AdvanceConversation -> case conversation state of
@@ -184,6 +201,9 @@ eventsFor state command
 eventsForEffects :: GameState -> [Effect] -> Either Text [Event]
 eventsForEffects state = fmap snd . foldM apply (state, [])
   where
+    apply (current, events) (Effect.WalkNpc identifier path) = do
+      steps <- walkNpc current identifier path
+      pure (foldl' applyEvent current steps, events <> steps)
     apply (current, events) effect = do
       event <- case effect of
         Effect.GiveCritter critter
@@ -309,3 +329,19 @@ walkable = \case
   Tree -> False
   Wall -> False
   Water -> False
+
+walkNpc :: GameState -> NpcId -> [Position] -> Either Text [Event]
+walkNpc state identifier path = snd <$> foldM stepNpc (state, []) path
+  where
+    stepNpc (current, events) destination = do
+      npc <- maybe (Left "That NPC is not available.") Right (Map.lookup identifier (npcs current))
+      let origin = Npc.location npc
+          Position oldX oldY = Location.position origin
+          Position newX newY = destination
+          onMap = current{playerMap = Location.mapId origin}
+          playerBlocks = playerMap current == Location.mapId origin && playerPosition current == destination
+      if abs (from @Int @Integer newX - from @Int @Integer oldX) + abs (from @Int @Integer newY - from @Int @Integer oldY) /= 1 || playerBlocks || not (canStand onMap destination)
+        then Left "That NPC walking path is blocked or has a nonadjacent step."
+        else
+          let event = Event.NpcMoved identifier origin{Location.position = destination}
+           in Right (applyEvent current event, events <> [event])

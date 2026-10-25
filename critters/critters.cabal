@@ -50,9 +50,6 @@ extra-doc-files:
     docs/battles.md
 
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
-extra-source-files:
-    games/red.json
-
 common settings
     default-extensions:
         DerivingStrategies
@@ -111,6 +108,7 @@ library
         Critters.State.BattleOutcome
         Critters.State.BattlePhase
         Critters.State.BattleProfile
+        Critters.State.BattleSide
         Critters.State.BattleUpdate
         Critters.State.Choice
         Critters.State.CombatConfig
@@ -208,10 +206,14 @@ test-suite critters-test
 
     -- Modules included in this executable, other than Main.
     other-modules:
+        BattleEventTests
         BattlePersistenceTests
         BattleTests
         InteractionTests
+        PlaybackTests
+        SceneTests
         SchemaTests
+        TurnEventTests
 
     -- The interface type and version of the test suite.
     type:             exitcode-stdio-1.0
@@ -233,4 +235,5 @@ test-suite critters-test
         directory,
         tasty,
         tasty-hunit,
-        text
+        text,
+        witch

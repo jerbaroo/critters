@@ -25,6 +25,7 @@
   effects need their own evidence and approval. Do not add tests merely to
   justify speculative behavior. When evidence is missing, leave the behavior
   unchanged and raise the proposed change in the plan for discussion.
+- Do not preserve backward compatibility unless explicitly requested.
 - Keep top-level definitions, record fields, and export lists alphabetical.
 - Set the language and all `default-extensions` in a shared Cabal common stanza
   imported by every component. All components must use the same language and

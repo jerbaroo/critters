@@ -1,4 +1,4 @@
-module Critters.Interface.TUI.Keyboard (input, withTerminal) where
+module Critters.Interface.TUI.Keyboard (discardInput, input, withTerminal) where
 
 import Control.Exception (bracket, bracket_, finally)
 import Critters.Input (Input)
@@ -6,6 +6,22 @@ import Critters.Input qualified as Input
 import System.Exit (exitSuccess)
 import System.IO (BufferMode (NoBuffering), hFlush, hGetBuffering, hGetEcho, hIsTerminalDevice, hLookAhead, hSetBuffering, hSetEcho, hWaitForInput, isEOF, stdin, stdout)
 import System.IO.Error (catchIOError, isEOFError)
+
+-- | Playback keys must not become commands when the battle menu returns.
+discardInput :: IO ()
+discardInput = do
+  terminal <- hIsTerminalDevice stdin
+  whenReady terminal
+  where
+    whenReady False = pure ()
+    whenReady True = do
+      available <- catchIOError (hWaitForInput stdin 0) (\err -> if isEOFError err then pure False else ioError err)
+      if available
+        then
+          input >>= \case
+            Just (Input.Character 'q') -> exitSuccess
+            _ -> whenReady True
+        else pure ()
 
 input :: IO (Maybe Input)
 input =

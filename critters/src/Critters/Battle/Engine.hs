@@ -7,6 +7,7 @@ import Critters.Battle.Menu qualified as Menu
 import Critters.Battle.Turn qualified as Turn
 import Critters.Command (Command (..))
 import Critters.Event (Event)
+import Critters.Event qualified as Event
 import Critters.Input (Input)
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
@@ -74,6 +75,7 @@ beginDefinition state definition
                     battleMessages = [Definition.definitionName definition],
                     battleOpponentParty = Definition.definitionOpponents definition,
                     battleParticipants = [player],
+                    battlePhase = if null (Definition.definitionIntroduction definition) then ActionMenu else Introduction,
                     battleRewardedOpponents = [index | (index, critter) <- zip [0 ..] (Definition.definitionOpponents definition), not (Common.usable critter)]
                   }
             else Left "A participant has an invalid species, move, status, resource count or level."
@@ -103,6 +105,12 @@ completionEffects active = case battleOutcome active of
 eventsFor :: GameState -> Command -> [Event]
 eventsFor state command = case Common.contextFor state of
   Nothing -> []
+  Just context | battlePhase (contextBattle context) == Introduction ->
+    case command of
+      ConfirmSelection
+        | battleIntroductionIndex (contextBattle context) + 1 < length (Definition.definitionIntroduction (battleDefinition (contextBattle context))) -> [Event.BattleIntroductionAdvanced (battleIntroductionIndex (contextBattle context) + 1)]
+        | otherwise -> [Event.BattleCombatantsSentOut]
+      _ -> []
   Just context -> case command of
     ActInBattle action -> Turn.resolveAction state action
     CloseMenu | battlePhase active `notElem` [ActionMenu, Finished, ReplacementMenu] -> update context active{battlePhase = ActionMenu, battleSelected = 0, battleSelectedItem = Nothing}

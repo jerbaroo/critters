@@ -12,9 +12,10 @@ import Critters.Event qualified as Event
 import Critters.Formula (Formula (..))
 import Critters.Formula qualified as Formula
 import Critters.Input qualified as Input
-import Critters.Input.Direction (Direction (East, North))
+import Critters.Input.Direction (Direction (East))
 import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell qualified as Cell
+import Critters.Save qualified as Save
 import Critters.State.Affliction (Affliction (..))
 import Critters.State.Battle (Battle (..), defaultBattle)
 import Critters.State.BattleDefinition (BattleDefinition (..), defaultDefinition)
@@ -22,6 +23,7 @@ import Critters.State.BattleOutcome (BattleOutcome (..))
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.BattleProfile (BattleProfile (..), defaultProfile)
 import Critters.State.BattleUpdate (BattleUpdate (..))
+import Critters.State.Choice (Choice (..))
 import Critters.State.CombatConfig (CombatConfig (..), defaultCombat)
 import Critters.State.Critter (Critter (..), basicCritter)
 import Critters.State.Effect (Effect (..))
@@ -29,11 +31,16 @@ import Critters.State.Encounter (Encounter (..))
 import Critters.State.EncounterEntry (EncounterEntry (..))
 import Critters.State.FlagId (FlagId (..))
 import Critters.State.GameState (GameState (..), initialState)
+import Critters.State.Interaction (Interaction (..))
 import Critters.State.Item (Item (..), defaultItem)
+import Critters.State.Location (Location (..))
 import Critters.State.MapId (MapId (..))
 import Critters.State.Move (Move (..), defaultMove)
 import Critters.State.MoveEffect (MoveEffect (..), Target (..))
 import Critters.State.MoveId (MoveId (..))
+import Critters.State.Npc (Npc (..))
+import Critters.State.NpcId (NpcId (..))
+import Critters.State.Object (Object (..))
 import Critters.State.ObjectId (ObjectId (..))
 import Critters.State.Party (Party (..))
 import Critters.State.Position (Position (..))
@@ -47,7 +54,78 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import System.Timeout (timeout)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertBool, assertFailure, testCase)
+import Test.Tasty.HUnit (assertBool, testCase)
+import Witch (from)
+
+animationTests :: TestTree
+animationTests =
+  testGroup
+    "Health animation"
+    [ testCase "Render empty, partial and full health bars" $
+        forM_ [(0, 20, 0), (10, 20, 8), (20, 20, 16), (1, 3, 5)] $ \(current, maximumHealth, filled) ->
+          assertBool "Expected a sixteen-segment gauge proportional to current health" $
+            TUI.healthBar current maximumHealth == "[" <> Text.replicate filled "█" <> Text.replicate (16 - filled) "░" <> "]",
+      testCase "Animate both health counters and bars to their exact final values" $
+        let before = start fixture
+            after = withHealth 12 6 before
+            frames = TUI.animationFrames 4 before after
+         in assertBool "Expected four ordered frames with matching HP, bars and viewport dimensions" $
+              length frames == 4
+                && and (zipWith showsHealth [(18, 9), (16, 8), (14, 7), (12, 6)] frames)
+                && all viewport frames
+                && drop 3 frames == [TUI.renderFrame after],
+      testCase "Animate healing and damage down to zero health" $
+        let before = withHealth 5 5 (start fixture)
+            after = withHealth 20 0 before
+            frames = TUI.animationFrames 3 before after
+         in assertBool "Expected gradual healing and damage without overshooting either endpoint" $
+              length frames == 3
+                && and (zipWith showsHealth [(10, 4), (15, 2), (20, 0)] frames)
+                && drop 2 frames == [TUI.renderFrame after],
+      testCase "Draw immediately when health is unchanged or a battle starts or ends" $
+        let opened = start fixture
+            (menu, _) = Engine.step opened Input.Enter
+         in forM_ [(initialState, opened), (opened, initialState), (opened, opened), (opened, menu)] $ \(before, after) ->
+              assertBool "Expected one frame without an animation delay" $
+                TUI.animationFrames 12 before after == [TUI.renderFrame after],
+      testCase "Draw the final state when no animation frames are requested" $
+        let before = start fixture
+            after = withHealth 12 6 before
+         in forM_ [0, -1] $ \count ->
+              assertBool "Expected the exact final display" (TUI.animationFrames count before after == [TUI.renderFrame after]),
+      testCase "Do not interpolate between different active party members" $
+        let before = start fixture{party = Party [basicCritter 20 2 20 "leafling", basicCritter 7 2 20 "leafling"]}
+            after = before{battle = fmap (\active -> active{battleActivePlayer = 1}) (battle before)}
+         in assertBool "Expected the incoming critter's actual health immediately" $
+              TUI.animationFrames 12 before after == [TUI.renderFrame after],
+      testCase "Replace numeric damage messages in the TUI while retaining other battle messages" $
+        let opened = start fixture
+            state = opened{battle = fmap (\active -> active{battleMessages = ["leafling used Basic strike.", "stonekin lost 2 HP.", "leafling is poisoned.", "Victory."]}) (battle opened)}
+            update = BattleUpdate (maybe defaultBattle id (battle state)) Nothing Nothing Nothing
+            messages = TUI.eventMessages 0 (Event.BattleChanged update) opened state
+            frames = concatMap (\message -> TUI.dialogueFrames 1 message opened state) messages
+            drawings = map (Text.concat . map (Text.concat . map Cell.glyph)) frames
+         in assertBool "Expected move, status and outcome messages with both combatants' health bars" $
+              messages == ["Leafling used Basic strike.", "Leafling is poisoned.", "You defeated Battle"]
+                && all (\drawing -> not (Text.isInfixOf "lost 2 HP." drawing) && Text.count ("[" <> Text.replicate 16 "█" <> "]") drawing == 2) drawings
+    ]
+  where
+    rows = map (Text.stripEnd . Text.concat . map Cell.glyph)
+    showsHealth (playerHealth, enemyHealth) frame = case rows frame of
+      _ : _ : enemy : enemyBar : player : playerBar : _ ->
+        Text.isSuffixOf ("HP " <> number enemyHealth <> "/10") enemy
+          && enemyBar == TUI.healthBar enemyHealth 10
+          && Text.isSuffixOf ("HP " <> number playerHealth <> "/20") player
+          && playerBar == TUI.healthBar playerHealth 20
+      _ -> False
+    number :: Int -> Text.Text
+    number = from . show
+    viewport frame = length frame == TUI.height && all ((== TUI.width * 2) . sum . map Cell.columns) frame
+    withHealth playerHealth enemyHealth state =
+      state
+        { battle = fmap (\active -> active{battleOpponentParty = map (\critter -> critter{hitPoints = enemyHealth}) (battleOpponentParty active)}) (battle state),
+          party = Party (map (\critter -> critter{hitPoints = playerHealth}) (members (party state)))
+        }
 
 encounterTests :: TestTree
 encounterTests =
@@ -213,45 +291,55 @@ progressionTests =
     progressing = fixture{combat = (combat fixture){configMoves = Map.insert (MoveId "surge") defaultMove{moveName = "Surge", movePower = 12} (configMoves (combat fixture)), configSpecies = Map.adjust (\definition -> definition{speciesExperienceYield = 10}) "stonekin" (Map.adjust (\definition -> definition{speciesLearnset = Map.fromList [(1, [MoveId "strike"]), (3, [MoveId "surge"])]}) "leafling" (configSpecies (combat fixture)))}}
     win opened = iterate (\state -> foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId "strike")))) opened !! 2
 
-redTests :: TestTree
-redTests =
+rematchTests :: TestTree
+rematchTests =
   testGroup
-    "Red game"
-    [ testCase "Rematch the rival after losing with any starter" $ do
-        decoded <- Aeson.eitherDecodeFileStrict @GameState "games/red.json"
-        case decoded of
-          Left message -> assertFailure message
-          Right base ->
-            forM_
-              [ (7, "bulbasaur", "growl", "lab-rival-charmander", "lab-charmander", []),
-                (8, "charmander", "growl", "lab-rival-squirtle", "lab-squirtle", [Input.Right]),
-                (9, "squirtle", "tail-whip", "lab-rival-bulbasaur", "lab-bulbasaur", [Input.Down])
-              ]
-              $ \(column, starter, move, rival, rivalBall, selection) -> do
-                let ready = base{flags = Map.insert (FlagId "oak.offer-made") True (flags base), playerDirection = North, playerMap = MapId "pallet-lab", playerPosition = Position column 5}
-                    choose state input = fst (Engine.step state input)
-                    started = foldl' choose ready [Input.Enter, Input.Enter]
-                    loseTurn state = foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId move)))
-                    lost = iterate loseTurn started !! 100
-                    acknowledged = choose lost Input.Enter
-                    atRival = acknowledged{playerPosition = Position 5 4}
-                    rematched = foldl' choose atRival ([Input.Enter] <> selection <> [Input.Enter])
-                assertBool "Expected the starter choice to remove both balls and start the matching rival battle" $
-                  map species (members (party started)) == [starter]
-                    && not (Map.member (ObjectId rivalBall) (objects started))
-                    && fmap battleDefinition (battle started) == Map.lookup rival (configBattles (combat base))
-                assertBool "Expected a lost battle to be acknowledged without completing the rival story" $
-                  fmap battleOutcome (battle lost) == Just (Just Defeat)
-                    && battle acknowledged == Nothing
-                    && Map.lookup (FlagId "lab.rival-battle-completed") (flags acknowledged) /= Just True
-                assertBool "Expected a fresh rival battle without removing objects or changing the player's party" $
-                  fmap battleDefinition (battle rematched) == Map.lookup rival (configBattles (combat base))
-                    && fmap battleOutcome (battle rematched) == Just Nothing
-                    && fmap battleTurn (battle rematched) == Just 0
-                    && activeInteraction rematched == Nothing
-                    && objects rematched == objects acknowledged
-                    && party rematched == party acknowledged
+    "Rematches"
+    [ testCase "Rematch after losing without removing consumed objects again" $
+        forM_ companions $ \(name, identifier, selection) -> do
+          let offered = Interaction [Choice [GiveCritter (basicCritter 10 2 10 name), RemoveObject companionBox, RemoveObject opponentBox, StartBattle identifier] "Accept"] [] ["Choose this companion?"] []
+              ready =
+                configured
+                  { objects = Map.fromList [(companionBox, Object "🔴" [offered] (Location (MapId "overworld") (Position 2 1))), (opponentBox, Object "🔴" [] (Location (MapId "overworld") (Position 3 1)))]
+                  }
+              choose state input = fst (Engine.step state input)
+              started = foldl' choose ready [Input.Enter, Input.Enter]
+              loseTurn state = foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId "wait")))
+              lost = iterate loseTurn started !! 3
+              acknowledged = choose lost Input.Enter
+              atOpponent = acknowledged{playerPosition = Position 4 1}
+              rematched = foldl' choose atOpponent ([Input.Enter] <> selection <> [Input.Enter])
+          assertBool "Expected the companion choice to consume both objects and start the configured battle" $
+            map species (members (party started)) == [name]
+              && Map.null (objects started)
+              && fmap battleDefinition (battle started) == Map.lookup identifier (configBattles (combat configured))
+          assertBool "Expected a lost battle to be acknowledged" $
+            fmap battleOutcome (battle lost) == Just (Just Defeat) && battle acknowledged == Nothing
+          assertBool "Expected a fresh matching battle without removing objects or changing the player's party" $
+            fmap battleDefinition (battle rematched) == Map.lookup identifier (configBattles (combat configured))
+              && fmap battleOutcome (battle rematched) == Just Nothing
+              && fmap battleTurn (battle rematched) == Just 0
+              && activeInteraction rematched == Nothing
+              && objects rematched == objects acknowledged
+              && party rematched == party acknowledged
     ]
+  where
+    companionBox = ObjectId "companion-box"
+    companions = [("leafling", "practice-leaf", []), ("emberling", "practice-ember", [Input.Right]), ("brookling", "practice-brook", [Input.Down])]
+    configured =
+      fixture
+        { combat =
+            (combat fixture)
+              { configBattles = Map.fromList [(identifier, defaultDefinition{definitionName = identifier, definitionOpponents = [basicCritter 10 2 10 "stonekin"]}) | (_, identifier, _) <- companions],
+                configMoves = Map.insert (MoveId "wait") defaultMove{moveName = "Wait", movePower = 0} (configMoves (combat fixture)),
+                configSpecies = Map.union (Map.fromList [(name, defaultSpecies{speciesLearnset = Map.singleton 1 [MoveId "wait"]}) | (name, _, _) <- companions]) (configSpecies (combat fixture))
+              },
+          npcs = Map.singleton (NpcId "opponent") (Npc [] [Interaction [Choice [StartBattle identifier] name | (name, identifier, _) <- companions] [] ["Which companion will battle?"] []] (Location (MapId "overworld") (Position 5 1))),
+          party = Party [],
+          playerDirection = East,
+          playerPosition = Position 1 1
+        }
+    opponentBox = ObjectId "opponent-box"
 
 snapshotTests :: TestTree
 snapshotTests =
@@ -321,13 +409,14 @@ tests :: TestTree
 tests =
   testGroup
     "Battle"
-    [ encounterTests,
+    [ animationTests,
+      encounterTests,
       itemTests,
       lifecycleTests,
       opponentTests,
       profileTests,
       progressionTests,
-      redTests,
+      rematchTests,
       snapshotTests,
       statusTests,
       turnTests,
@@ -392,12 +481,28 @@ turnTests =
         let opened = start fixture{party = Party [basicCritter 20 2 20 "leafling", basicCritter 10 2 10 "leafling"]}
             result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (SwitchCritter 1))
          in assertBool "Expected retaliation against the switched-in critter" (map hitPoints (members (party result)) == [20, 5] && fmap battleTurn (battle result) == Just 1),
-      testCase "Apply outcome effects only after acknowledgement" $
-        let configured = fixture{combat = (combat fixture){configBattles = Map.adjust (\definition -> definition{definitionVictoryEffects = [SetFlag (FlagId "practice.won") True]}) "practice" (configBattles (combat fixture))}}
-            opened = start configured
-            won = iterate (\state -> foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId "strike")))) opened !! 2
-            (closed, _) = Engine.step won Input.Enter
-         in assertBool "Expected a visible outcome, then story effects and exploration" (Map.lookup (FlagId "practice.won") (flags won) == Nothing && battle closed == Nothing && Map.lookup (FlagId "practice.won") (flags closed) == Just True && playerPosition closed == playerPosition configured),
+      testCase "Complete every battle outcome automatically after its final dialogue" $
+        forM_ [(Victory, UseMove (MoveId "strike")), (Defeat, UseMove (MoveId "strike")), (Escaped, EscapeBattle), (Captured, UseItem "capsule" (-1))] $ \(outcome, action) -> do
+          let completedFlag = FlagId "practice.completed"
+              effects = [SetFlag completedFlag True]
+              definition = defaultDefinition{definitionAllowCapture = True, definitionAllowEscape = True, definitionCaptureEffects = effects, definitionDefeatEffects = effects, definitionEscapeEffects = effects, definitionOpponents = [basicCritter 5 2 10 "stonekin"], definitionVictoryEffects = effects}
+              configured = fixture{combat = (combat fixture){configBattles = Map.singleton "practice" definition, configItems = Map.singleton "capsule" defaultItem{itemCaptureBonus = 1}, configRules = (configRules (combat fixture)){rulesCaptureFormula = Formula "1", rulesEscapeFormula = Formula "1"}}, inventory = Map.singleton "capsule" 1, party = Party [basicCritter (if outcome == Defeat then 3 else 20) 2 20 "leafling"]}
+              opened = start configured
+              -- Survive the player's hit so the opponent can cause defeat.
+              ready = if outcome == Defeat then opened{battle = fmap (\active -> active{battleOpponentParty = [basicCritter 10 2 10 "stonekin"]}) (battle opened)} else opened
+              turn = Turn.resolveAction ready action
+              settled = foldl' Engine.applyEvent ready turn
+              events = Engine.eventsFor ready (Command.ActInBattle action)
+              closed = Save.apply ready events
+              states = scanl Engine.applyEvent ready turn
+              sentences = snd $ foldl' (\(seen, messages) (event, before, after) -> (maybe 0 (length . battleMessages) (battle after), messages <> TUI.eventMessages seen event before after)) (0, []) (zip3 turn states (drop 1 states))
+          assertBool "Expected the complete turn before closure and exactly one application of outcome effects" $
+            fmap battleOutcome (battle settled) == Just (Just outcome)
+              && events == turn <> [Event.BattleEnded, Event.FlagChanged completedFlag True]
+              && closed == settled{battle = Nothing, flags = Map.insert completedFlag True (flags settled)}
+              && not (null sentences)
+              && not (Text.isInfixOf "Continue" (TUI.render settled))
+              && playerPosition closed == playerPosition ready,
       testCase "Battle menus support arrows, j/k and Escape without Back entries" $ do
         let opened = start fixture{inventory = Map.singleton "tonic" 1, party = Party [basicCritter 20 2 20 "leafling", basicCritter 10 2 10 "leafling"]}
             (next, _) = Engine.step opened (Input.Character 'j')
@@ -503,13 +608,35 @@ viewTests =
         let opened = start fixture
             (moves, _) = Engine.step opened Input.Enter
             frame = TUI.renderFrame moves
-         in assertBool "Expected health and moves within the terminal viewport" (length frame == TUI.height && all ((== TUI.width * 2) . sum . map Cell.columns) frame && all (\text -> Text.isInfixOf text (TUI.render moves)) ["Opponent: stonekin", "You: leafling", "HP 20/20", "> Basic strike"]),
-      testCase "Use the bottom option box for actions, moves, items and continuing"
+         in assertBool "Expected health and moves within the terminal viewport" (length frame == TUI.height && all ((== TUI.width * 2) . sum . map Cell.columns) frame && all (\text -> Text.isInfixOf text (TUI.render moves)) ["Stonekin", "Leafling", "HP 20/20", "> Basic strike"]),
+      testCase "Display combatants without prefixes and name the defeated opponent" $
+        forM_ ["Trainer Fern", "Guide Moss"] $ \opponent ->
+          let configured = fixture{combat = (combat fixture){configSpecies = Map.adjust (\definition -> definition{speciesName = "LeafLING"}) "leafling" (configSpecies (combat fixture))}}
+              opened = start configured
+              won = opened{battle = fmap (\active -> active{battleDefinition = (battleDefinition active){definitionName = opponent}, battleMessages = ["Victory."], battleOutcome = Just Victory, battlePhase = Finished}) (battle opened)}
+              drawing = map (Text.stripEnd . Text.concat . map Cell.glyph) (TUI.renderFrame won)
+              victory = Text.concat [Cell.glyph cell | frame <- TUI.dialogueFrames 1 "Victory." opened won, row <- frame, cell <- row]
+              choosing = opened{battle = fmap (\active -> active{battlePhase = SwitchMenu}) (battle opened)}
+           in assertBool "Expected configured capitalization, capitalized fallback names and an opponent-specific victory message" $
+                take 1 drawing == [opponent]
+                  && drawing !! 2 == "Stonekin  Lv 2  HP 10/10"
+                  && drawing !! 4 == "LeafLING  Lv 2  HP 20/20"
+                  && Text.isInfixOf ("You defeated " <> opponent) victory
+                  && not (any (\prefix -> Text.isInfixOf prefix (Text.concat drawing)) ["Battle —", "Opponent:", "You:", "Victory."])
+                  && Text.isInfixOf "> LeafLING  HP 20/20" (TUI.render choosing)
+                  && Text.isInfixOf "1. LeafLING  Lv 2  HP 20/20" (TUI.render opened{battle = Nothing, partyOpen = True}),
+      testCase "Capitalize battle messages without changing their remaining casing" $
+        forM_ [("defense stage changed.", "Defense stage changed."), ("specialDefense stage changed.", "SpecialDefense stage changed."), ("recovered 2 HP with X-Ray.", "Recovered 2 HP with X-Ray."), ("", ""), ("HP remains 10/20.", "HP remains 10/20.")] $ \(message, expected) ->
+          let opened = start fixture
+              frames = TUI.dialogueFrames 1 message opened opened
+              dialogue frame = map (Text.strip . Text.dropEnd 1 . Text.drop 1 . Text.concat . map Cell.glyph) (take 2 (drop (TUI.height - 3) frame))
+           in assertBool "Expected sentence capitals while preserving identifiers, acronyms, names and empty messages" $
+                map dialogue frames == [[expected, ""]],
+      testCase "Use the bottom option box for actions, moves and items"
         $ forM_
           [ (ActionMenu, [optionRow " > Moves" "   Party", optionRow "   Items" ""]),
             (MoveMenu, [optionRow " > Basic strike  5/5" "", optionRow "" ""]),
-            (ItemMenu, [optionRow " > tonic x1" "", optionRow "" ""]),
-            (Finished, [optionRow " > Continue" "", optionRow "" ""])
+            (ItemMenu, [optionRow " > tonic x1" "", optionRow "" ""])
           ]
         $ \(phase, options) ->
           let opened = start fixture{inventory = Map.singleton "tonic" 1}
@@ -540,14 +667,14 @@ viewTests =
             drawing = map (Text.concat . map Cell.glyph) (TUI.renderFrame choosing)
          in assertBool "Expected a visible active critter and confirmation to return to actions" $
               fmap battlePhase (battle choosing) == Just SwitchMenu
-                && drawing !! 11 == Text.justifyLeft (TUI.width * 2) ' ' "> leafling  HP 20/20"
+                && drawing !! 11 == Text.justifyLeft (TUI.width * 2) ' ' "> Leafling  HP 20/20"
                 && fst (Engine.step choosing Input.Enter) == opened,
       testCase "List the whole switch party in order while preserving switch validation" $ do
         let opened = start fixture{party = Party [basicCritter 20 2 20 "leafling", basicCritter 0 2 10 "leafling", basicCritter 10 2 10 "leafling"]}
             choosing = opened{battle = fmap (\active -> active{battlePhase = SwitchMenu}) (battle opened)}
             drawing = map (Text.concat . map Cell.glyph) (TUI.renderFrame choosing)
         assertBool "Expected active, fainted and available critters in party order" $
-          take 3 (drop 11 drawing) == map (Text.justifyLeft (TUI.width * 2) ' ') ["> leafling  HP 20/20", "  leafling  HP 0/10", "  leafling  HP 10/10"]
+          take 3 (drop 11 drawing) == map (Text.justifyLeft (TUI.width * 2) ' ') ["> Leafling  HP 20/20", "  Leafling  HP 0/10", "  Leafling  HP 10/10"]
         let fainted = choosing{battle = fmap (\active -> active{battleSelected = 1}) (battle choosing)}
         assertBool "Expected no state change or turn when selecting a fainted critter" $
           Engine.step fainted Input.Enter == (fainted, [])
@@ -558,7 +685,7 @@ viewTests =
         assertBool "Expected a valid choice to switch using its original party index and consume one turn" $
           fmap battleActivePlayer (battle switched) == Just 2 && fmap battleTurn (battle switched) == Just 1
         assertBool "Expected forced replacement to retain only eligible critters" $
-          take 3 (drop 11 replacementRows) == map (Text.justifyLeft (TUI.width * 2) ' ') ["> leafling  HP 20/20", "  leafling  HP 10/10", ""],
+          take 3 (drop 11 replacementRows) == map (Text.justifyLeft (TUI.width * 2) ' ') ["> Leafling  HP 20/20", "  Leafling  HP 10/10", ""],
       testCase "Keep switching, replacement and item targets as party lists" $
         forM_ [ItemTargetMenu, ReplacementMenu, SwitchMenu] $ \phase ->
           let opened = start fixture{party = Party (replicate 6 (basicCritter 10 2 10 "leafling"))}
@@ -567,8 +694,8 @@ viewTests =
               drawing = map (Text.concat . map Cell.glyph) frame
            in assertBool "Expected full-width party entries without an option box" $
                 length frame == TUI.height
-                  && drawing !! 11 == Text.justifyLeft (TUI.width * 2) ' ' "> leafling  HP 10/10"
-                  && Text.count "leafling  HP" (Text.concat drawing) == (if phase == ReplacementMenu then 5 else 6)
+                  && drawing !! 11 == Text.justifyLeft (TUI.width * 2) ' ' "> Leafling  HP 10/10"
+                  && Text.count "Leafling  HP" (Text.concat drawing) == (if phase == ReplacementMenu then 5 else 6)
                   && not (any (Text.isPrefixOf "  Back") drawing)
                   && all (\hint -> not (Text.isInfixOf hint (Text.concat drawing))) ["Choose a critter:", "Choose a target:", "Choose a replacement:", "Select  Enter:", "Enter: Switch", "Esc: Back", "q: Quit"]
                   && not (Text.isInfixOf "┌" (Text.concat drawing)),
@@ -577,7 +704,7 @@ viewTests =
             opened = start configured
             active = fmap (\current -> current{battlePhase = SwitchMenu, battleSelected = 35}) (battle opened)
             drawing = TUI.render opened{battle = active}
-         in assertBool "Expected the selected entry to remain visible without a help footer" (Text.isInfixOf "> leafling" drawing && not (Text.isInfixOf "Esc: Back" drawing))
+         in assertBool "Expected the selected entry to remain visible without a help footer" (Text.isInfixOf "> Leafling" drawing && not (Text.isInfixOf "Esc: Back" drawing))
     ]
   where
     border left right = left <> Text.replicate (TUI.width * 2 - 2) "─" <> right

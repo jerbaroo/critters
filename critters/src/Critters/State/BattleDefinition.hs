@@ -13,6 +13,7 @@ data BattleDefinition = BattleDefinition
     definitionCaptureEffects :: [Effect],
     definitionDefeatEffects :: [Effect],
     definitionEscapeEffects :: [Effect],
+    definitionIntroduction :: [Text],
     definitionName :: Text,
     definitionOpponentPolicy :: Text,
     definitionOpponents :: [Critter],
@@ -29,6 +30,7 @@ defaultDefinition =
       definitionCaptureEffects = [],
       definitionDefeatEffects = [],
       definitionEscapeEffects = [],
+      definitionIntroduction = [],
       definitionName = "Battle",
       definitionOpponentPolicy = "first",
       definitionOpponents = [],
@@ -46,6 +48,7 @@ instance HasCodec BattleDefinition where
         <*> Codec.optionalFieldWithOmittedDefault "captureEffects" ([]) "Effects after a capture ends the battle." Codec..= definitionCaptureEffects
         <*> Codec.optionalFieldWithOmittedDefault "defeatEffects" ([]) "Effects after defeat." Codec..= definitionDefeatEffects
         <*> Codec.optionalFieldWithOmittedDefault "escapeEffects" ([]) "Effects after escaping." Codec..= definitionEscapeEffects
+        <*> Codec.optionalFieldWithOmittedDefault "introduction" [] "Dialogue before combatants are sent out." Codec..= definitionIntroduction
         <*> Codec.optionalFieldWithOmittedDefault "name" ("Battle") "Battle title." Codec..= definitionName
         <*> Codec.optionalFieldWithOmittedDefault "opponentPolicy" ("first") "Opponent policy: first, random or strongest." Codec..= definitionOpponentPolicy
         <*> Codec.optionalFieldWithOmittedDefault "opponents" ([]) "Opposing party." Codec..= definitionOpponents

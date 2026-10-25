@@ -1,5 +1,6 @@
 module Main (main) where
 
+import BattleEventTests qualified as BattleEventTests
 import BattlePersistenceTests qualified as BattlePersistenceTests
 import BattleTests qualified as BattleTests
 import Control.Exception (bracket)
@@ -21,11 +22,14 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as TextEncoding
 import Data.Text.IO qualified as TextIO
 import InteractionTests qualified as InteractionTests
+import PlaybackTests qualified as PlaybackTests
+import SceneTests qualified as SceneTests
 import SchemaTests qualified as SchemaTests
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (hClose, openTempFile)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, testCase)
+import TurnEventTests qualified as TurnEventTests
 
 assertRoundTrip :: (Eq a, Aeson.FromJSON a, Aeson.ToJSON a) => a -> Assertion
 assertRoundTrip value =
@@ -430,9 +434,9 @@ partyRenderTests =
             drawing = rows state
         assertViewport state
         assertBool "Expected party members to fill the viewport and overflow to be clipped" $
-          Text.isPrefixOf "1. visible" (drawing !! 2)
-            && not (Text.isInfixOf "hidden" (Text.concat drawing))
-            && Text.count ". visible" (Text.concat drawing) == TUI.height - 2,
+          Text.isPrefixOf "1. Visible" (drawing !! 2)
+            && not (Text.isInfixOf "Hidden" (Text.concat drawing))
+            && Text.count ". Visible" (Text.concat drawing) == TUI.height - 2,
       testCase "Display critter details in party order" $ do
         let state =
               initialState
@@ -443,7 +447,7 @@ partyRenderTests =
         assertViewport state
         assertBool "Expected the count, configured maximum, species, level and current/maximum HP" $
           map Text.stripEnd (take 4 (rows state))
-            == ["Party — 2 / 9", "", "1. leafling  Lv 5  HP 7/20", "2. brookling  Lv 2  HP 0/12"],
+            == ["Party — 2 / 9", "", "1. Leafling  Lv 5  HP 7/20", "2. Brookling  Lv 2  HP 0/12"],
       testCase "Display an empty party" $ do
         let state = initialState{partyOpen = True}
             drawing = rows state
@@ -815,7 +819,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [BattlePersistenceTests.tests, BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, saveTests, SchemaTests.tests, stateTests, tuiTests, warpTests]
+tests = testGroup "Critters" [BattleEventTests.tests, BattlePersistenceTests.tests, BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, PlaybackTests.tests, saveTests, SceneTests.tests, SchemaTests.tests, stateTests, TurnEventTests.tests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =

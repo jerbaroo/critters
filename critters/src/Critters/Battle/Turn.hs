@@ -1,6 +1,6 @@
 module Critters.Battle.Turn (accuracyFor, damageFor, resolveAction, settle) where
 
-import Control.Monad (forM_, when)
+import Control.Monad (foldM, when)
 import Control.Monad.Trans.State.Strict (State)
 import Control.Monad.Trans.State.Strict qualified as State
 import Critters.Battle.Action (Action (..))
@@ -12,12 +12,15 @@ import Critters.Battle.Opponent qualified as Opponent
 import Critters.Battle.Progression qualified as Progression
 import Critters.Battle.Status qualified as Status
 import Critters.Event (Event)
+import Critters.Event qualified as Event
 import Critters.Number (number)
 import Critters.State.Battle (Battle (..))
 import Critters.State.BattleDefinition qualified as Definition
 import Critters.State.BattleOutcome (BattleOutcome (..))
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.BattleProfile qualified as Profile
+import Critters.State.BattleSide qualified as BattleSide
+import Critters.State.BattleUpdate (BattleUpdate (..))
 import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState)
 import Critters.State.Move qualified as Move
@@ -37,17 +40,20 @@ actionPriority context side = \case
   where
     rules = Common.rulesFor context
 
-executeAction :: Side -> Action -> State Context ()
+executeAction :: Side -> Action -> State Context (Maybe MoveId)
 executeAction side = \case
-  EscapeBattle -> Items.escape
-  SwitchCritter index -> switch side index
-  UseItem identifier target -> Items.useItem identifier target
-  UseMove identifier -> Status.beforeAction side >>= \allowed -> when allowed (performMove side identifier)
+  EscapeBattle -> Items.escape >> pure Nothing
+  SwitchCritter index -> switch side index >> pure Nothing
+  UseItem identifier target -> Items.useItem identifier target >> pure Nothing
+  UseMove identifier -> do
+    allowed <- Status.beforeAction side
+    performed <- if allowed then performMove side identifier else pure False
+    pure (if performed then Just identifier else Nothing)
 
 finish :: BattleOutcome -> State Context ()
 finish = Common.endBattle
 
-performMove :: Side -> MoveId -> State Context ()
+performMove :: Side -> MoveId -> State Context Bool
 performMove side identifier = do
   context <- State.get
   case (Common.active side context, lookup identifier (Common.availableMoves side context)) of
@@ -65,7 +71,8 @@ performMove side identifier = do
           sharedCritical <- if Rules.rulesCriticalPerHit (Common.rulesFor context) then pure False else criticalRoll move
           damage <- strike move hits sharedCritical True
           mapM_ (Status.applyEffect side damage) (Move.moveEffects move)
-    _ -> pure ()
+      pure True
+    _ -> pure False
   where
     criticalRoll move = do
       context <- State.get
@@ -94,9 +101,22 @@ performMove side identifier = do
                   pure (amount + rest)
             _ -> pure 0
 
+recordAction :: Context -> Side -> Action -> State Context [Event]
+recordAction before side action = do
+  used <- executeAction side action
+  after <- State.get
+  let event = case used of
+        Just identifier -> Event.MoveUsed (case side of Enemy -> BattleSide.Enemy; Player -> BattleSide.Player) identifier
+        Nothing -> Event.BattleChanged
+      facts = [event (updateBetween before after) | isJust used || before /= after]
+  settle
+  settled <- State.get
+  pure (facts <> [Event.BattleChanged (updateBetween after settled) | after /= settled])
+
 resolveAction :: GameState -> Action -> [Event]
 resolveAction state action = case Common.contextFor state of
-  Just context | validAction context action -> Common.changedEvents state (State.execState (runTurn action) context)
+  Just context | battlePhase (contextBattle context) == Introduction -> []
+  Just context | validAction context action -> State.evalState (runTurn action) context
   Just context | not (isJust (battleOutcome (contextBattle context))) && battlePhase (contextBattle context) /= ReplacementMenu -> case action of
     UseItem identifier target -> case Items.validateItem context identifier target of
       Left message -> Common.changedEvents state context{contextBattle = (contextBattle context){battleMessages = [message]}}
@@ -105,12 +125,12 @@ resolveAction state action = case Common.contextFor state of
     _ -> []
   _ -> []
 
-runTurn :: Action -> State Context ()
+runTurn :: Action -> State Context [Event]
 runTurn action = do
   initial <- State.get
   State.modify $ \context -> context{contextBattle = (contextBattle context){battleMessages = [], battlePhase = ActionMenu, battleSelected = 0, battleSelectedItem = Nothing}}
   if battlePhase (contextBattle initial) == ReplacementMenu
-    then executeAction Player action >> settle
+    then recordAction initial Player action
     else do
       enemyAction <- Opponent.chooseAction
       let playerPriority = actionPriority initial Player action
@@ -127,12 +147,21 @@ runTurn action = do
                 "random" -> Common.chance 0.5
                 _ -> pure True
       let ordered = if playerFirst then [(Player, action), (Enemy, enemyAction)] else [(Enemy, enemyAction), (Player, action)]
-      forM_ ordered $ \(side, selectedAction) -> do
-        current <- State.get
-        when (not (isJust (battleOutcome (contextBattle current))) && battlePhase (contextBattle current) /= ReplacementMenu && Common.activeIndex side current == Common.activeIndex side initial && maybe False Common.usable (Common.active side current)) $ executeAction side selectedAction >> settle
+      (recorded, facts) <- foldM (resolve initial) (initial, []) ordered
       Status.afterTurn initial
       settle
       State.modify $ \context -> context{contextBattle = (contextBattle context){battleTurn = battleTurn (contextBattle context) + 1}}
+      final <- State.get
+      pure (facts <> [Event.TurnCompleted (updateBetween recorded final)])
+  where
+    resolve initial (recorded, facts) (side, selectedAction) = do
+      current <- State.get
+      if not (isJust (battleOutcome (contextBattle current))) && battlePhase (contextBattle current) /= ReplacementMenu && Common.activeIndex side current == Common.activeIndex side initial && maybe False Common.usable (Common.active side current)
+        then do
+          next <- recordAction recorded side selectedAction
+          settled <- State.get
+          pure (settled, facts <> next)
+        else pure (recorded, facts)
 
 settle :: State Context ()
 settle = do
@@ -160,6 +189,16 @@ switch side index = do
     update reset current
       | side == Player = current{battleActivePlayer = index, battleParticipants = nub (battleParticipants current <> [index]), battlePhase = ActionMenu, battlePlayerStages = if reset then Map.empty else battlePlayerStages current}
       | otherwise = current{battleActiveOpponent = index, battleParticipants = [battleActivePlayer current], battleEnemyStages = if reset then Map.empty else battleEnemyStages current}
+
+updateBetween :: Context -> Context -> BattleUpdate
+updateBetween before after =
+  BattleUpdate
+    (contextBattle after)
+    (changed (contextInventory before) (contextInventory after))
+    (changed (contextParty before) (contextParty after))
+    (changed (contextSeed before) (contextSeed after))
+  where
+    changed old new = if old == new then Nothing else Just new
 
 validAction :: Context -> Action -> Bool
 validAction context action

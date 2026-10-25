@@ -50,4 +50,4 @@ output _ state = do
 writeLog :: () -> FilePath -> Text -> IO ()
 writeLog _ logPath message = do
   TextIO.putStrLn message
-  TextIO.appendFile logPath message
+  TextIO.appendFile logPath (message <> "\n")

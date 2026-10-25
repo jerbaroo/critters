@@ -33,6 +33,13 @@
           },
           "type": "array"
         },
+        "introduction": {
+          "$comment": "Dialogue before combatants are sent out.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "name": {
           "$comment": "Battle title.",
           "type": "string"
@@ -865,6 +872,49 @@
         },
         {
           "properties": {
+            "npc": {
+              "$comment": "The NPC to walk.",
+              "type": "string"
+            },
+            "path": {
+              "$comment": "Adjacent positions in walking order.",
+              "items": {
+                "$comment": "Position",
+                "properties": {
+                  "x": {
+                    "$comment": "Zero-based column, increasing to the right.",
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  },
+                  "y": {
+                    "$comment": "Zero-based row from the bottom, increasing upwards.",
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "y",
+                  "x"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "type": {
+              "const": "walk-npc"
+            }
+          },
+          "required": [
+            "type",
+            "path",
+            "npc"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
             "critter": {
               "$comment": "The critter to add to the party.",
               "$ref": "#/$defs/Critter"
@@ -1276,6 +1326,12 @@
                     }
                   ]
                 },
+                "introductionIndex": {
+                  "$comment": "Current pre-battle dialogue line.",
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
                 "messages": {
                   "$comment": "Messages from the most recent action.",
                   "items": {
@@ -1331,6 +1387,9 @@
                     },
                     {
                       "const": "finished"
+                    },
+                    {
+                      "const": "introduction"
                     },
                     {
                       "const": "items"
@@ -1947,6 +2006,12 @@
                         }
                       ]
                     },
+                    "introductionIndex": {
+                      "$comment": "Current pre-battle dialogue line.",
+                      "maximum": 9223372036854775807,
+                      "minimum": -9223372036854775808,
+                      "type": "integer"
+                    },
                     "messages": {
                       "$comment": "Messages from the most recent action.",
                       "items": {
@@ -2002,6 +2067,9 @@
                         },
                         {
                           "const": "finished"
+                        },
+                        {
+                          "const": "introduction"
                         },
                         {
                           "const": "items"

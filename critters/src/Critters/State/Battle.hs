@@ -24,6 +24,7 @@ data Battle = Battle
     battleEnemyStages :: Map Text Int,
     battleEscapeAttempts :: Int,
     battleInitialSeed :: Maybe Int,
+    battleIntroductionIndex :: Int,
     battleMessages :: [Text],
     battleOpponentParty :: [Critter],
     battleOutcome :: Maybe BattleOutcome,
@@ -49,6 +50,7 @@ defaultBattle =
       battleEnemyStages = Map.empty,
       battleEscapeAttempts = 0,
       battleInitialSeed = Nothing,
+      battleIntroductionIndex = 0,
       battleMessages = [],
       battleOpponentParty = [],
       battleOutcome = Nothing,
@@ -74,6 +76,7 @@ instance HasCodec Battle where
         <*> Codec.optionalFieldWithOmittedDefault "enemyStages" (Map.empty) "Temporary opposing stat stages." Codec..= battleEnemyStages
         <*> Codec.optionalFieldWithOmittedDefault "escapeAttempts" (0) "Failed escape attempts." Codec..= battleEscapeAttempts
         <*> Codec.optionalFieldOrNull "initialSeed" "Random state at entry; absent in older histories." Codec..= battleInitialSeed
+        <*> Codec.optionalFieldWithOmittedDefault "introductionIndex" 0 "Current pre-battle dialogue line." Codec..= battleIntroductionIndex
         <*> Codec.optionalFieldWithOmittedDefault "messages" ([]) "Messages from the most recent action." Codec..= battleMessages
         <*> Codec.optionalFieldWithOmittedDefault "opponentParty" ([]) "Current opposing party." Codec..= battleOpponentParty
         <*> Codec.optionalFieldOrNull "outcome" "Resolved outcome awaiting acknowledgement." Codec..= battleOutcome
@@ -87,7 +90,7 @@ instance HasCodec Battle where
     where
       validate value
         | battleActiveOpponent value < 0 || battleActiveOpponent value >= length (battleOpponentParty value) = Left "Active opponent index is outside its party."
-        | battleActivePlayer value < 0 || battleEscapeAttempts value < 0 || battleSelected value < 0 || battleTurn value < 0 || any (< 0) (battleParticipants value) = Left "Battle indices and counts must not be negative."
+        | battleIntroductionIndex value < 0 || battleActivePlayer value < 0 || battleEscapeAttempts value < 0 || battleSelected value < 0 || battleTurn value < 0 || any (< 0) (battleParticipants value) = Left "Battle indices and counts must not be negative."
         | maybe False (\seed -> seed < 0 || seed > 2147483647) (battleInitialSeed value) = Left "Invalid battle entry seed."
         | length (nub (battleParticipants value)) /= length (battleParticipants value) = Left "Battle participants must be unique."
         | any (\index -> index < 0 || index >= length (battleOpponentParty value)) (battleCapturedOpponents value <> battleRewardedOpponents value) = Left "Recorded opponent indices are outside the opposing party."
