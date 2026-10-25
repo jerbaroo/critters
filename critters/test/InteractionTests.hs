@@ -51,13 +51,25 @@ codecTests =
             assertBool "Expected an empty interaction" (Aeson.eitherDecode @Interaction "{}" == Right (Interaction [] [] [] []))
             assertBool "Expected a choice with no effects" (Aeson.eitherDecode @Choice "{\"label\":\"No\"}" == Right (Choice [] "No"))
             assertBool "Expected a scripted NPC without a dialogue field" $
-                Aeson.eitherDecode @Npc "{\"interactions\":[{\"dialogue\":[\"Hello.\"]}],\"location\":{\"mapId\":\"test\",\"position\":{\"x\":1,\"y\":2}}}"
-                    == Right (Npc [] [Interaction [] [] ["Hello."] []] (Location (MapId "test") (Position 1 2)))
+                Aeson.eitherDecode @Npc "{\"interactions\":[{\"dialogue\":[\"Hello.\"]}],\"location\":{\"mapId\":\"test\",\"position\":{\"x\":1,\"y\":2}},\"name\":\"Guide\"}"
+                    == Right (Npc [] [Interaction [] [] ["Hello."] []] (Location (MapId "test") (Position 1 2)) "Guide")
         , testCase "Reject malformed effects and nested conditions" $ do
             forM_ ["{\"type\":\"give-critter\"}", "{\"type\":\"remove-object\"}", "{\"type\":\"set-flag\",\"flag\":\"x\",\"value\":null}", "{\"type\":\"starter\"}"] $ \encoded ->
                 assertBool "Expected invalid effects to fail decoding" (isLeft (Aeson.eitherDecode @Effect encoded))
             assertBool "Expected the nested condition to use type flag" $
                 isLeft (Aeson.eitherDecode @Interaction "{\"conditions\":[{\"type\":\"flag-is\",\"flag\":\"x\",\"value\":true}]}")
+        , testCase "Resolve stable NPC name references and report invalid references" $ do
+            let state = permitted{GameState.npcs = Map.singleton (NpcId "guide") (Npc [] [] (Location (MapId "test") (Position 1 2)) "Guide")}
+            assertBool "Expected the stored NPC name to replace the reference" $
+                GameState.resolveText state "{guide.name}: Hello, {guide.name}!" == Right "Guide: Hello, Guide!"
+            assertBool "Expected the TUI to display resolved dialogue" $
+                "Guide: Hello!" `Text.isInfixOf` TUI.render state{GameState.activeInteraction = Just (ActiveInteraction 0 (Interaction [] [] ["{guide.name}: Hello!"] []) Nothing)}
+            assertBool "Expected an unknown NPC to report a runtime error" $
+                isLeft (GameState.resolveText state "{missing.name}")
+            assertBool "Expected unsupported fields to report a runtime error" $
+                isLeft (GameState.resolveText state "{guide.title}")
+            assertBool "Expected unclosed references to report a runtime error" $
+                isLeft (GameState.resolveText state "{guide.name")
         , testCase "Round trip scripts, objects, active views and runtime events" $ do
             assertRoundTrip gift
             assertRoundTrip capsuleId
@@ -109,6 +121,7 @@ exampleState =
                     , Interaction [] [] ["Welcome to my lab!", "You may choose one of these three critters."] [SetFlag (FlagId "guide.offer-made") True]
                     ]
                     (Location (MapId "workshop") (Position 5 6))
+                    "Guide"
                 )
         , GameState.objects = Map.fromList (map capsule [(7, "leafling"), (8, "emberling"), (9, "brookling")])
         , GameState.playerMap = MapId "workshop"
@@ -347,7 +360,7 @@ scene =
     initialState
         { GameState.maps = Map.singleton (MapId "test") (World (replicate 5 (replicate 5 (Just Ground))) [])
         , GameState.maxPartySize = 2
-        , GameState.npcs = Map.singleton (NpcId "guide") (Npc [] [Interaction [] [] ["Hello.", "You may take a gift."] [SetFlag permission True]] (Location (MapId "test") (Position 1 2)))
+        , GameState.npcs = Map.singleton (NpcId "guide") (Npc [] [Interaction [] [] ["Hello.", "You may take a gift."] [SetFlag permission True]] (Location (MapId "test") (Position 1 2)) "Guide")
         , GameState.objects =
             Map.singleton
                 capsuleId

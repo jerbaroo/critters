@@ -9,7 +9,6 @@ import Critters.Event (Event (..))
 import Critters.State.Affliction (Affliction (..))
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
-import Critters.State.BattleDefinition (BattleDefinition (..))
 import Critters.State.BattleDefinition qualified as BattleDefinition
 import Critters.State.BattleOutcome (BattleOutcome (..))
 import Critters.State.BattleProfile (BattleProfile (..), defaultProfile)
@@ -21,13 +20,12 @@ import Critters.State.Critter (Critter (..), basicCritter)
 import Critters.State.Critter qualified as Critter
 import Critters.State.GameState (GameState (..))
 import Critters.State.GameState qualified as GameState
-import Critters.State.Move (Move (..))
 import Critters.State.Move qualified as Move
 import Critters.State.MoveId (MoveId (..))
 import Critters.State.Party (Party (..))
-import Critters.State.Species (BaseStats (..), Species (..), defaultSpecies)
+import Critters.State.Species (BaseStats (..), defaultSpecies)
 import Critters.State.Species qualified as Species
-import Critters.State.StatusDefinition (StatusDefinition (..), defaultStatus)
+import Critters.State.StatusDefinition (defaultStatus)
 import Critters.State.StatusDefinition qualified as StatusDefinition
 import Data.Aeson qualified as Aeson
 import Data.Map.Strict qualified as Map

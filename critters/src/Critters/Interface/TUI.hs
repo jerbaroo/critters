@@ -86,11 +86,16 @@ awaitDialogueAdvance =
         _ -> awaitDialogueAdvance
 
 battleMessage :: GameState -> Text -> Text
-battleMessage state value = case BattleCommon.contextFor state of
+battleMessage state rawValue = case BattleCommon.contextFor state of
     Just context
-        | value == "Victory." -> "You defeated " <> context.battle.definition.name
+        | value == "Victory." -> "You defeated " <> resolveText state context.battle.definition.name
         | otherwise -> capitalize (speciesText context.battle.config (BattleCommon.allCritters BattleCommon.Enemy context <> BattleCommon.allCritters BattleCommon.Player context) value)
     Nothing -> capitalize value
+  where
+    value = resolveText state rawValue
+
+resolveText :: GameState -> Text -> Text
+resolveText state value = either (error . Text.unpack) id (GameState.resolveText state value)
 
 capitalize :: Text -> Text
 capitalize value = case Text.uncons value of
@@ -254,9 +259,9 @@ renderBattleWithHealth health dialogue state = case BattleCommon.contextFor stat
         choices = [(if index == active.selected then "> " else "  ") <> label | (index, label) <- zip [0 ..] labels]
         critters = BattleCommon.allCritters BattleCommon.Player context
         details =
-            renderText 6 (Text.intercalate "\n" [active.definition.name, "", description BattleCommon.Enemy context, gauge BattleCommon.Enemy context, description BattleCommon.Player context, gauge BattleCommon.Player context])
+            renderText 6 (Text.intercalate "\n" [resolveText state active.definition.name, "", description BattleCommon.Enemy context, gauge BattleCommon.Enemy context, description BattleCommon.Player context, gauge BattleCommon.Player context])
                 <> renderText 5 ""
-        labels = map ((if partySelection then speciesText active.config critters else id) . fst) (BattleMenu.entries state)
+        labels = map (resolveText state . (if partySelection then speciesText active.config critters else id) . fst) (BattleMenu.entries state)
         menuHeight = height - length details
         offset = max 0 (active.selected - menuHeight + 1)
         options = renderOptions active.selected labels
@@ -269,13 +274,13 @@ renderBattleWithHealth health dialogue state = case BattleCommon.contextFor stat
     hitPoints side critter = maybe critter.hitPoints id (lookup side health)
     number value = from (toLazyText (decimal value))
 
-renderChoices :: ActiveInteraction -> [[Cell]]
-renderChoices active =
+renderChoices :: GameState -> ActiveInteraction -> [[Cell]]
+renderChoices state active =
     renderText (height - length options) question <> options
   where
-    options = renderOptions (maybe (-1) id active.selectedChoice) (map (.label) active.script.choices)
+    options = renderOptions (maybe (-1) id active.selectedChoice) (map (resolveText state . (.label)) active.script.choices)
     question = case drop active.dialogueIndex active.script.dialogue of
-        line : _ | active.dialogueIndex >= 0 -> line
+        line : _ | active.dialogueIndex >= 0 -> resolveText state line
         _ -> ""
 
 -- | Two padded text rows, clipped to the viewport's column width.
@@ -299,9 +304,9 @@ renderFrameWithHealth :: [(BattleCommon.Side, Int)] -> Maybe Text -> GameState -
 renderFrameWithHealth health dialogue state
     | state.partyOpen = renderParty state
     | isJust state.battle = renderBattleWithHealth health dialogue state
-    | Just active <- state.activeInteraction, isJust active.selectedChoice = renderChoices active
+    | Just active <- state.activeInteraction, isJust active.selectedChoice = renderChoices state active
     | otherwise = case interactionText state <|> conversationText state of
-        Just message -> take (height - 2) rows <> renderConversation message
+        Just message -> take (height - 2) rows <> renderConversation (resolveText state message)
         Nothing -> rows
   where
     building tile symbol roof position
@@ -350,9 +355,9 @@ renderFrameWithHealth health dialogue state
 -- | Introduction and send-out dialogue precede combatant details and options.
 renderIntroduction :: Text -> GameState -> [[Cell]]
 renderIntroduction message state =
-    renderText (height - 4) heading <> renderDialogue message
+    renderText (height - 4) heading <> renderDialogue (resolveText state message)
   where
-    heading = maybe "" (.definition.name) state.battle
+    heading = maybe "" (resolveText state . (.definition.name)) state.battle
 
 -- | Two options per row, with at least two rows and no upper row limit.
 renderOptions :: Int -> [Text] -> [[Cell]]

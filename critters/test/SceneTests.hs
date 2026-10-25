@@ -11,7 +11,6 @@ import Critters.Input qualified as Input
 import Critters.Save qualified as Save
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
-import Critters.State.BattleDefinition (BattleDefinition (..))
 import Critters.State.BattleDefinition qualified as BattleDefinition
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.CombatConfig (CombatConfig (..))
@@ -37,7 +36,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
 scene :: GameState
-scene = fixture{GameState.maps = Map.singleton (MapId "overworld") (World (replicate 4 (replicate 5 (Just Ground))) []), GameState.npcs = Map.singleton (NpcId "rival") (Npc [] [] (Location (MapId "overworld") (Position 0 1))), GameState.playerPosition = Position 4 1, GameState.combat = fixture.combat{CombatConfig.battles = Map.adjust (\definition -> definition{BattleDefinition.introduction = ["Meet my new partner!", "Let's battle!"]}) "practice" fixture.combat.battles}}
+scene = fixture{GameState.maps = Map.singleton (MapId "overworld") (World (replicate 4 (replicate 5 (Just Ground))) []), GameState.npcs = Map.singleton (NpcId "rival") (Npc [] [] (Location (MapId "overworld") (Position 0 1)) "Rival"), GameState.playerPosition = Position 4 1, GameState.combat = fixture.combat{CombatConfig.battles = Map.adjust (\definition -> definition{BattleDefinition.introduction = ["Meet my new partner!", "Let's battle!"]}) "practice" fixture.combat.battles}}
 
 tests :: TestTree
 tests =
@@ -65,7 +64,7 @@ tests =
                 [ (scene, NpcId "missing", [Position 1 1])
                 , (scene, NpcId "rival", [Position 1 1, Position 3 1])
                 , (scene, NpcId "rival", [Position 1 1, Position 2 1, Position 3 1, Position 4 1])
-                , (scene{GameState.npcs = Map.insert (NpcId "aide") (Npc [] [] (Location (MapId "overworld") (Position 2 1))) scene.npcs}, NpcId "rival", [Position 1 1, Position 2 1])
+                , (scene{GameState.npcs = Map.insert (NpcId "aide") (Npc [] [] (Location (MapId "overworld") (Position 2 1)) "Aide") scene.npcs}, NpcId "rival", [Position 1 1, Position 2 1])
                 , (scene{GameState.objects = Map.singleton (ObjectId "desk") (Object "X" [] (Location (MapId "overworld") (Position 2 1)))}, NpcId "rival", [Position 1 1, Position 2 1])
                 , (scene{GameState.maps = Map.singleton (MapId "overworld") (World (replicate 4 [Just Ground, Just Ground, Just Wall]) [])}, NpcId "rival", [Position 1 1, Position 2 1])
                 , (scene, NpcId "rival", [Position 0 2, Position 0 3, Position 0 4])

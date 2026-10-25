@@ -1,4 +1,4 @@
-module Critters.State.GameState (conversationText, GameState (..), initialState, interactionText, npcAt, objectAt, world) where
+module Critters.State.GameState (conversationText, GameState (..), initialState, interactionText, npcAt, objectAt, resolveText, world) where
 
 import Autodocodec (Autodocodec (..), Codec (EqCodec), HasCodec, JSONCodec, JSONObjectCodec)
 import Autodocodec qualified as Codec
@@ -17,7 +17,7 @@ import Critters.State.Location (Location (..))
 import Critters.State.MapId (MapId (..))
 import Critters.State.Npc (Npc)
 import Critters.State.Npc qualified as Npc
-import Critters.State.NpcId (NpcId)
+import Critters.State.NpcId (NpcId (..))
 import Critters.State.Object (Object)
 import Critters.State.Object qualified as Object
 import Critters.State.ObjectId (ObjectId)
@@ -32,6 +32,7 @@ import Data.List (find)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Text qualified as Text
 
 conversationText :: GameState -> Maybe Text
 conversationText state = do
@@ -107,6 +108,32 @@ interactionText state = do
     case drop index active.script.dialogue of
         line : _ | index >= 0 -> Just line
         _ -> Nothing
+
+-- | Resolve NPC name references such as @\{oak.name\}@ in displayed text.
+resolveText :: GameState -> Text -> Either Text Text
+resolveText state = go
+  where
+    go remaining =
+        let (prefix, afterOpen) = Text.breakOn "{" remaining
+         in if Text.null afterOpen
+                then Right prefix
+                else do
+                    let afterBrace = Text.drop 1 afterOpen
+                        (reference, afterClose) = Text.breakOn "}" afterBrace
+                    if Text.null afterClose
+                        then Left ("Unclosed NPC name reference in text: " <> remaining)
+                        else do
+                            name <- resolveReference reference
+                            rest <- go (Text.drop 1 afterClose)
+                            Right (prefix <> name <> rest)
+    resolveReference reference = case Text.splitOn "." reference of
+        [identifier, "name"]
+            | not (Text.null identifier) ->
+                maybe
+                    (Left ("Unknown NPC name reference {" <> reference <> "}: no NPC with id \"" <> identifier <> "\"."))
+                    (Right . (.name))
+                    (Map.lookup (NpcId identifier) state.npcs)
+        _ -> Left ("Unsupported text reference {" <> reference <> "}; expected {npcId.name}.")
 
 npcAt :: GameState -> Position -> Maybe (NpcId, Npc)
 npcAt state coordinates =

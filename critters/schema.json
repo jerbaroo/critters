@@ -1644,83 +1644,30 @@
           "$comment": "Stationary NPCs.",
           "additionalProperties": {
             "$comment": "Npc",
-            "anyOf": [
-              {
-                "properties": {
-                  "dialogue": {
-                    "$comment": "Legacy dialogue, used when interactions are absent.",
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "interactions": {
-                    "$comment": "Conditional interactions in priority order.",
-                    "items": {
-                      "$ref": "#/$defs/Interaction"
-                    },
-                    "type": "array"
-                  },
-                  "location": {
-                    "$comment": "The map and ground cell occupied by the NPC.\nLocation",
-                    "properties": {
-                      "mapId": {
-                        "$comment": "The map identifier.",
-                        "type": "string"
-                      },
-                      "position": {
-                        "$comment": "Coordinates within that map.\nPosition",
-                        "properties": {
-                          "x": {
-                            "$comment": "Zero-based column, increasing to the right.",
-                            "maximum": 9223372036854775807,
-                            "minimum": -9223372036854775808,
-                            "type": "integer"
-                          },
-                          "y": {
-                            "$comment": "Zero-based row from the bottom, increasing upwards.",
-                            "maximum": 9223372036854775807,
-                            "minimum": -9223372036854775808,
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "y",
-                          "x"
-                        ],
-                        "type": "object"
-                      }
-                    },
-                    "required": [
-                      "position",
-                      "mapId"
-                    ],
-                    "type": "object"
-                  }
+            "properties": {
+              "dialogue": {
+                "$comment": "Legacy dialogue, used when interactions are absent.",
+                "items": {
+                  "type": "string"
                 },
-                "required": [
-                  "location"
-                ],
-                "type": "object"
+                "type": "array"
               },
-              {
+              "interactions": {
+                "$comment": "Conditional interactions in priority order.",
+                "items": {
+                  "$ref": "#/$defs/Interaction"
+                },
+                "type": "array"
+              },
+              "location": {
+                "$comment": "The map and ground cell occupied by the NPC.\nLocation",
                 "properties": {
-                  "dialogue": {
-                    "$comment": "Legacy dialogue lines in order.",
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "interactions": {
-                    "$comment": "Conditional interactions in priority order.",
-                    "items": {
-                      "$ref": "#/$defs/Interaction"
-                    },
-                    "type": "array"
+                  "mapId": {
+                    "$comment": "The map identifier.",
+                    "type": "string"
                   },
                   "position": {
-                    "$comment": "Coordinates in the overworld.\nPosition",
+                    "$comment": "Coordinates within that map.\nPosition",
                     "properties": {
                       "x": {
                         "$comment": "Zero-based column, increasing to the right.",
@@ -1743,10 +1690,19 @@
                   }
                 },
                 "required": [
-                  "position"
+                  "position",
+                  "mapId"
                 ],
                 "type": "object"
+              },
+              "name": {
+                "$comment": "The display name referenced by text as {npcId.name}.",
+                "type": "string"
               }
+            },
+            "required": [
+              "name",
+              "location"
             ],
             "type": "object"
           },
@@ -2363,83 +2319,30 @@
               "$comment": "Stationary NPCs.",
               "additionalProperties": {
                 "$comment": "Npc",
-                "anyOf": [
-                  {
-                    "properties": {
-                      "dialogue": {
-                        "$comment": "Legacy dialogue, used when interactions are absent.",
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "interactions": {
-                        "$comment": "Conditional interactions in priority order.",
-                        "items": {
-                          "$ref": "#/$defs/Interaction"
-                        },
-                        "type": "array"
-                      },
-                      "location": {
-                        "$comment": "The map and ground cell occupied by the NPC.\nLocation",
-                        "properties": {
-                          "mapId": {
-                            "$comment": "The map identifier.",
-                            "type": "string"
-                          },
-                          "position": {
-                            "$comment": "Coordinates within that map.\nPosition",
-                            "properties": {
-                              "x": {
-                                "$comment": "Zero-based column, increasing to the right.",
-                                "maximum": 9223372036854775807,
-                                "minimum": -9223372036854775808,
-                                "type": "integer"
-                              },
-                              "y": {
-                                "$comment": "Zero-based row from the bottom, increasing upwards.",
-                                "maximum": 9223372036854775807,
-                                "minimum": -9223372036854775808,
-                                "type": "integer"
-                              }
-                            },
-                            "required": [
-                              "y",
-                              "x"
-                            ],
-                            "type": "object"
-                          }
-                        },
-                        "required": [
-                          "position",
-                          "mapId"
-                        ],
-                        "type": "object"
-                      }
+                "properties": {
+                  "dialogue": {
+                    "$comment": "Legacy dialogue, used when interactions are absent.",
+                    "items": {
+                      "type": "string"
                     },
-                    "required": [
-                      "location"
-                    ],
-                    "type": "object"
+                    "type": "array"
                   },
-                  {
+                  "interactions": {
+                    "$comment": "Conditional interactions in priority order.",
+                    "items": {
+                      "$ref": "#/$defs/Interaction"
+                    },
+                    "type": "array"
+                  },
+                  "location": {
+                    "$comment": "The map and ground cell occupied by the NPC.\nLocation",
                     "properties": {
-                      "dialogue": {
-                        "$comment": "Legacy dialogue lines in order.",
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "interactions": {
-                        "$comment": "Conditional interactions in priority order.",
-                        "items": {
-                          "$ref": "#/$defs/Interaction"
-                        },
-                        "type": "array"
+                      "mapId": {
+                        "$comment": "The map identifier.",
+                        "type": "string"
                       },
                       "position": {
-                        "$comment": "Coordinates in the overworld.\nPosition",
+                        "$comment": "Coordinates within that map.\nPosition",
                         "properties": {
                           "x": {
                             "$comment": "Zero-based column, increasing to the right.",
@@ -2462,10 +2365,19 @@
                       }
                     },
                     "required": [
-                      "position"
+                      "position",
+                      "mapId"
                     ],
                     "type": "object"
+                  },
+                  "name": {
+                    "$comment": "The display name referenced by text as {npcId.name}.",
+                    "type": "string"
                   }
+                },
+                "required": [
+                  "name",
+                  "location"
                 ],
                 "type": "object"
               },

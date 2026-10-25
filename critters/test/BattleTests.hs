@@ -38,7 +38,7 @@ import Critters.State.FlagId (FlagId (..))
 import Critters.State.GameState (GameState (..), initialState)
 import Critters.State.GameState qualified as GameState
 import Critters.State.Interaction (Interaction (..))
-import Critters.State.Item (Item (..), defaultItem)
+import Critters.State.Item (defaultItem)
 import Critters.State.Item qualified as Item
 import Critters.State.Location (Location (..))
 import Critters.State.MapId (MapId (..))
@@ -56,7 +56,7 @@ import Critters.State.Rules (Rules (..), defaultRules)
 import Critters.State.Rules qualified as Rules
 import Critters.State.Species (BaseStats (..), Species (..), defaultSpecies)
 import Critters.State.Species qualified as Species
-import Critters.State.StatusDefinition (StatusDefinition (..), defaultStatus)
+import Critters.State.StatusDefinition (defaultStatus)
 import Critters.State.StatusDefinition qualified as StatusDefinition
 import Critters.State.Tile (Tile (Ground))
 import Data.Aeson qualified as Aeson
@@ -345,7 +345,7 @@ rematchTests =
                     , CombatConfig.moves = Map.insert (MoveId "wait") defaultMove{Move.name = "Wait", Move.power = 0} fixture.combat.moves
                     , CombatConfig.species = Map.union (Map.fromList [(name, defaultSpecies{Species.learnset = Map.singleton 1 [MoveId "wait"]}) | (name, _, _) <- companions]) fixture.combat.species
                     }
-            , GameState.npcs = Map.singleton (NpcId "opponent") (Npc [] [Interaction [Choice [StartBattle identifier] name | (name, identifier, _) <- companions] [] ["Which companion will battle?"] []] (Location (MapId "overworld") (Position 5 1)))
+            , GameState.npcs = Map.singleton (NpcId "opponent") (Npc [] [Interaction [Choice [StartBattle identifier] name | (name, identifier, _) <- companions] [] ["Which companion will battle?"] []] (Location (MapId "overworld") (Position 5 1)) "Opponent")
             , GameState.party = Party []
             , GameState.playerDirection = East
             , GameState.playerPosition = Position 1 1

@@ -10,7 +10,6 @@ import Critters.Formula (Formula (..))
 import Critters.Input qualified as Input
 import Critters.Save qualified as Save
 import Critters.State.Battle (Battle (..))
-import Critters.State.BattleDefinition (BattleDefinition (..))
 import Critters.State.BattleDefinition qualified as BattleDefinition
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.CombatConfig (CombatConfig (..))
@@ -20,13 +19,12 @@ import Critters.State.Effect (Effect (..))
 import Critters.State.FlagId (FlagId (..))
 import Critters.State.GameState (GameState (..))
 import Critters.State.GameState qualified as GameState
-import Critters.State.Item (Item (..), defaultItem)
+import Critters.State.Item (defaultItem)
 import Critters.State.Item qualified as Item
 import Critters.State.MoveId (MoveId (..))
 import Critters.State.Party (Party (..))
-import Critters.State.Rules (Rules (..))
 import Critters.State.Rules qualified as Rules
-import Critters.State.Species (BaseStats (..), Species (..), defaultSpecies)
+import Critters.State.Species (BaseStats (..), defaultSpecies)
 import Critters.State.Species qualified as Species
 import Data.Map.Strict qualified as Map
 import System.Directory (getTemporaryDirectory, removeFile)

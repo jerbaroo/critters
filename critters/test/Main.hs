@@ -165,7 +165,7 @@ conversationTests =
                  in assertBool "Expected interaction to require the adjacent cell in front" $
                         Engine.step current Input.Enter == (current, [])
         , testCase "Ignore NPCs with no dialogue" $
-            let current = npcState{GameState.npcs = Map.singleton (NpcId "guide") (Npc [] [] (Location (MapId "overworld") (Position 2 1)))}
+            let current = npcState{GameState.npcs = Map.singleton (NpcId "guide") (Npc [] [] (Location (MapId "overworld") (Position 2 1)) "Guide")}
              in assertBool "Expected an empty dialogue to produce no conversation" $
                     Engine.step current Input.Enter == (current, [])
         , testCase "Read missing or invalid conversation lines safely" $
@@ -424,7 +424,7 @@ main = defaultMain tests
 npcState :: GameState
 npcState =
     (gameState (Position 1 1) (filledWorld (replicate 4 (replicate 4 Ground))))
-        { GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 2 1)))
+        { GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 2 1)) "Guide")
         , GameState.playerDirection = East
         }
 
@@ -749,19 +749,19 @@ stateTests =
                 assertBool "Expected the fixture's state" $
                     Aeson.eitherDecode fixture == Right state
             , testCase "Load legacy single-map files" $
-                let encoded = "{\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\"],\"position\":{\"x\":1,\"y\":0}}},\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"grass\"]]}}"
-                    expected = (gameState (Position 0 0) (filledWorld [[Ground, Grass]])){GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!"] [] (Location (MapId "overworld") (Position 1 0)))}
+                let encoded = "{\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\"],\"location\":{\"mapId\":\"overworld\",\"position\":{\"x\":1,\"y\":0}},\"name\":\"Guide\"}},\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"world\":{\"tiles\":[[\"ground\",\"grass\"]]}}"
+                    expected = (gameState (Position 0 0) (filledWorld [[Ground, Grass]])){GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!"] [] (Location (MapId "overworld") (Position 1 0)) "Guide")}
                  in assertBool "Expected the old world and NPC positions to belong to the overworld" $
                         Aeson.eitherDecode encoded == Right expected
             , testCase "Load missing cells" $
                 assertBool "Expected JSON null to represent an absent cell" $
                     Aeson.eitherDecode @World "{\"tiles\":[[null,\"ground\",null]]}" == Right (World [[Nothing, Just Ground, Nothing]] [])
             , testCase "Load NPCs and an active conversation" $
-                let encoded = "{\"conversation\":{\"lineIndex\":1,\"npcId\":\"guide\"},\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\",\"Visit my lab.\"],\"location\":{\"mapId\":\"overworld\",\"position\":{\"x\":1,\"y\":0}}}},\"playerDirection\":\"east\",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"maps\":{\"overworld\":{\"tiles\":[[\"ground\",\"grass\"]]}}}"
+                let encoded = "{\"conversation\":{\"lineIndex\":1,\"npcId\":\"guide\"},\"npcs\":{\"guide\":{\"dialogue\":[\"Hello!\",\"Visit my lab.\"],\"location\":{\"mapId\":\"overworld\",\"position\":{\"x\":1,\"y\":0}},\"name\":\"Guide\"}},\"playerDirection\":\"east\",\"playerPosition\":{\"x\":0,\"y\":0},\"version\":1,\"maps\":{\"overworld\":{\"tiles\":[[\"ground\",\"grass\"]]}}}"
                     expected =
                         (gameState (Position 0 0) (filledWorld [[Ground, Grass]]))
                             { GameState.conversation = Just (Conversation 1 (NpcId "guide"))
-                            , GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 1 0)))
+                            , GameState.npcs = Map.singleton (NpcId "guide") (Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 1 0)) "Guide")
                             , GameState.playerDirection = East
                             }
                  in assertBool "Expected stable NPC object keys, facing, dialogue and progress" $
@@ -778,7 +778,7 @@ stateTests =
             , testCase "GameState" $ forM_ [initialState, npcState, npcState{GameState.conversation = Just (Conversation 1 (NpcId "guide"))}, warpState, fst (Engine.step warpState Input.Up)] assertRoundTrip
             , testCase "Location" $ forM_ [Location (MapId "overworld") (Position 1 2), Location (MapId "room") (Position 0 1)] assertRoundTrip
             , testCase "MapId" $ forM_ [MapId "overworld", MapId "room"] assertRoundTrip
-            , testCase "Npc" $ forM_ [Npc [] [] (Location (MapId "overworld") (Position 0 0)), Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 2 1))] assertRoundTrip
+            , testCase "Npc" $ forM_ [Npc [] [] (Location (MapId "overworld") (Position 0 0)) "Guide", Npc ["Hello!", "Visit my lab."] [] (Location (MapId "overworld") (Position 2 1)) "Guide"] assertRoundTrip
             , testCase "NpcId" $ forM_ [NpcId "guide", NpcId "博士"] assertRoundTrip
             , testCase "Position" $
                 forM_ [Position 0 0, Position (-1) 2, Position minBound maxBound] assertRoundTrip
@@ -1004,7 +1004,7 @@ warpTests =
                         Engine.step current Input.Up == (current, [])
             let absent = warpState{GameState.maps = Map.delete (MapId "room") warpState.maps}
                 outside = warpState{GameState.maps = Map.adjust (\layout -> layout{World.tiles = []}) (MapId "room") warpState.maps}
-                occupied = warpState{GameState.npcs = Map.singleton (NpcId "inside") (Npc [] [] (Location (MapId "room") (Position 0 1)))}
+                occupied = warpState{GameState.npcs = Map.singleton (NpcId "inside") (Npc [] [] (Location (MapId "room") (Position 0 1)) "Inside")}
             forM_ [absent, outside, occupied] $ \current ->
                 assertBool "Expected missing maps, missing cells and NPCs to block arrival" $
                     Engine.step current Input.Up == (current, [])
@@ -1031,7 +1031,7 @@ warpTests =
                          in assertBool "Expected stairs to admit only their configured movement direction" $
                                 Engine.step current input == expected
         , testCase "Ignore NPCs in other maps" $
-            let current = warpState{GameState.npcs = Map.singleton (NpcId "outside") (Npc ["Hello!"] [] (Location (MapId "overworld") (Position 0 1)))}
+            let current = warpState{GameState.npcs = Map.singleton (NpcId "outside") (Npc ["Hello!"] [] (Location (MapId "overworld") (Position 0 1)) "Outside")}
                 (arrived, _) = Engine.step current Input.Up
              in assertBool "Expected unrelated NPCs neither to block arrival nor appear in the destination map" $
                     arrived.playerMap == MapId "room"

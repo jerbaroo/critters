@@ -7,7 +7,7 @@ import Critters.Engine qualified as Engine
 import Critters.Event (Event (..))
 import Critters.Pretty (pretty)
 import Critters.Save qualified as Save
-import Critters.State.Battle (Battle (..), defaultBattle)
+import Critters.State.Battle (defaultBattle)
 import Critters.State.Battle qualified as Battle
 import Critters.State.BattleSide (BattleSide (..))
 import Critters.State.BattleUpdate (BattleUpdate (..))

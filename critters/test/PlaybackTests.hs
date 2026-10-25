@@ -14,7 +14,6 @@ import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.Run (playEvents)
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
-import Critters.State.BattleDefinition (BattleDefinition (..))
 import Critters.State.BattleDefinition qualified as BattleDefinition
 import Critters.State.BattlePhase (BattlePhase (..))
 import Critters.State.BattleSide (BattleSide (..))
