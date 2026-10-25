@@ -13,6 +13,7 @@ data Command
   | Interact
   | OpenParty
   | Quit
+  | Select Direction
   | SelectNext
   | SelectPrevious
   | Walk Direction
@@ -28,6 +29,7 @@ instance Pretty Command where
     Interact -> "Interact"
     OpenParty -> "OpenParty"
     Quit -> "Quit"
+    Select direction -> "Select " <> pretty direction
     SelectNext -> "SelectNext"
     SelectPrevious -> "SelectPrevious"
     Walk direction -> "Walk " <> pretty direction

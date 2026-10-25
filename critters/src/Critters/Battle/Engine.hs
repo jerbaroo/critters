@@ -1,5 +1,6 @@
 module Critters.Battle.Engine (beginBattle, beginEncounter, commandFor, completionEffects, eventsFor) where
 
+import Critters.Battle.Action (Action (SwitchCritter))
 import Critters.Battle.Common (Context (..))
 import Critters.Battle.Common qualified as Common
 import Critters.Battle.Menu qualified as Menu
@@ -8,7 +9,9 @@ import Critters.Command (Command (..))
 import Critters.Event (Event)
 import Critters.Input (Input)
 import Critters.Input qualified as Input
+import Critters.Input.Direction (Direction (..))
 import Critters.Number qualified as Number
+import Critters.Selection qualified as Selection
 import Critters.State.Battle (Battle (..), defaultBattle)
 import Critters.State.BattleDefinition (BattleDefinition)
 import Critters.State.BattleDefinition qualified as Definition
@@ -77,12 +80,16 @@ beginDefinition state definition
 
 commandFor :: Input -> Maybe Command
 commandFor = \case
-  Input.Character 'j' -> Just SelectNext
-  Input.Character 'k' -> Just SelectPrevious
-  Input.Down -> Just SelectNext
+  Input.Character 'h' -> Just (Select West)
+  Input.Character 'j' -> Just (Select South)
+  Input.Character 'k' -> Just (Select North)
+  Input.Character 'l' -> Just (Select East)
+  Input.Down -> Just (Select South)
   Input.Enter -> Just ConfirmSelection
   Input.Escape -> Just CloseMenu
-  Input.Up -> Just SelectPrevious
+  Input.Left -> Just (Select West)
+  Input.Right -> Just (Select East)
+  Input.Up -> Just (Select North)
   _ -> Nothing
 
 completionEffects :: Battle -> [Effect]
@@ -98,16 +105,20 @@ eventsFor state command = case Common.contextFor state of
   Nothing -> []
   Just context -> case command of
     ActInBattle action -> Turn.resolveAction state action
-    CloseMenu | battlePhase active `notElem` [Finished, ReplacementMenu] -> update context active{battlePhase = ActionMenu, battleSelected = 0, battleSelectedItem = Nothing}
+    CloseMenu | battlePhase active `notElem` [ActionMenu, Finished, ReplacementMenu] -> update context active{battlePhase = ActionMenu, battleSelected = 0, battleSelectedItem = Nothing}
     ConfirmSelection -> case drop (battleSelected active) (Menu.entries state) of
       (_, Menu.GoTo phase) : _ -> update context active{battlePhase = phase, battleSelected = 0}
+      (_, Menu.Perform (SwitchCritter index)) : _
+        | battlePhase active == SwitchMenu && index == battleActivePlayer active -> update context active{battlePhase = ActionMenu, battleSelected = 0}
       (_, Menu.Perform action) : _ -> Turn.resolveAction state action
       (_, Menu.PickItem identifier) : _ -> update context active{battlePhase = ItemTargetMenu, battleSelected = 0, battleSelectedItem = Just identifier}
       _ -> []
+    Select direction -> update context active{battleSelected = Selection.moveSelection columns (length (Menu.entries state)) direction (battleSelected active)}
     SelectNext -> select context 1
     SelectPrevious -> select context (-1)
     _ -> []
     where
       active = contextBattle context
+      columns = if battlePhase active `elem` [ItemTargetMenu, ReplacementMenu, SwitchMenu] then 1 else 2
       select current delta = update current active{battleSelected = max 0 (min (length (Menu.entries state) - 1) (battleSelected active + delta))}
       update current next = Common.changedEvents state current{contextBattle = next}

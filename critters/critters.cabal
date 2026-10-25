@@ -50,6 +50,8 @@ extra-doc-files:
     docs/battles.md
 
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
+extra-source-files:
+    games/red.json
 
 common settings
     default-extensions:
@@ -100,6 +102,7 @@ library
         Critters.Run
         Critters.Save
         Critters.Schema
+        Critters.Selection
         Critters.State
         Critters.State.ActiveInteraction
         Critters.State.Affliction

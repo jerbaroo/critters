@@ -2,6 +2,7 @@ module BattleTests (fixture, start, tests) where
 
 import Autodocodec.Yaml qualified as Schema
 import Control.Exception (evaluate)
+import Control.Monad (forM_)
 import Critters.Battle.Action (Action (..))
 import Critters.Battle.Engine qualified as BattleEngine
 import Critters.Battle.Turn qualified as Turn
@@ -11,7 +12,7 @@ import Critters.Event qualified as Event
 import Critters.Formula (Formula (..))
 import Critters.Formula qualified as Formula
 import Critters.Input qualified as Input
-import Critters.Input.Direction (Direction (East))
+import Critters.Input.Direction (Direction (East, North))
 import Critters.Interface.TUI qualified as TUI
 import Critters.Interface.TUI.Cell qualified as Cell
 import Critters.State.Affliction (Affliction (..))
@@ -33,7 +34,9 @@ import Critters.State.MapId (MapId (..))
 import Critters.State.Move (Move (..), defaultMove)
 import Critters.State.MoveEffect (MoveEffect (..), Target (..))
 import Critters.State.MoveId (MoveId (..))
+import Critters.State.ObjectId (ObjectId (..))
 import Critters.State.Party (Party (..))
+import Critters.State.Position (Position (..))
 import Critters.State.Rules (Rules (..), defaultRules)
 import Critters.State.Species (BaseStats (..), Species (..), defaultSpecies)
 import Critters.State.StatusDefinition (StatusDefinition (..), defaultStatus)
@@ -44,7 +47,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import System.Timeout (timeout)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertBool, testCase)
+import Test.Tasty.HUnit (assertBool, assertFailure, testCase)
 
 encounterTests :: TestTree
 encounterTests =
@@ -130,7 +133,8 @@ lifecycleTests =
           Left _ -> assertBool "Expected a valid battle" False
           Right active ->
             let opened = Engine.applyEvent fixture (Event.BattleStarted active)
-             in assertBool "Expected a configuration snapshot and an isolated battle context" (battleConfig active == combat fixture && Engine.step opened Input.Right == (opened, []) && Engine.eventsFor opened (Command.Walk East) == []),
+                (selected, _) = Engine.step opened Input.Right
+             in assertBool "Expected a configuration snapshot and an isolated battle context" (battleConfig active == combat fixture && selected == opened{battle = Just active{battleSelected = 1}} && Engine.eventsFor opened (Command.Walk East) == []),
       testCase "Reject empty, fainted or unknown parties before any effects commit" $ do
         assertBool "Expected an empty party to be rejected" (isLeft (Engine.eventsForEffects fixture{party = Party []} [SetFlag (FlagId "test") True, StartBattle "practice"]))
         assertBool "Expected a fainted party to be rejected" (isLeft (BattleEngine.beginBattle fixture{party = Party [basicCritter 0 2 20 "leafling"]} "practice"))
@@ -209,6 +213,46 @@ progressionTests =
     progressing = fixture{combat = (combat fixture){configMoves = Map.insert (MoveId "surge") defaultMove{moveName = "Surge", movePower = 12} (configMoves (combat fixture)), configSpecies = Map.adjust (\definition -> definition{speciesExperienceYield = 10}) "stonekin" (Map.adjust (\definition -> definition{speciesLearnset = Map.fromList [(1, [MoveId "strike"]), (3, [MoveId "surge"])]}) "leafling" (configSpecies (combat fixture)))}}
     win opened = iterate (\state -> foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId "strike")))) opened !! 2
 
+redTests :: TestTree
+redTests =
+  testGroup
+    "Red game"
+    [ testCase "Rematch the rival after losing with any starter" $ do
+        decoded <- Aeson.eitherDecodeFileStrict @GameState "games/red.json"
+        case decoded of
+          Left message -> assertFailure message
+          Right base ->
+            forM_
+              [ (7, "bulbasaur", "growl", "lab-rival-charmander", "lab-charmander", []),
+                (8, "charmander", "growl", "lab-rival-squirtle", "lab-squirtle", [Input.Right]),
+                (9, "squirtle", "tail-whip", "lab-rival-bulbasaur", "lab-bulbasaur", [Input.Down])
+              ]
+              $ \(column, starter, move, rival, rivalBall, selection) -> do
+                let ready = base{flags = Map.insert (FlagId "oak.offer-made") True (flags base), playerDirection = North, playerMap = MapId "pallet-lab", playerPosition = Position column 5}
+                    choose state input = fst (Engine.step state input)
+                    started = foldl' choose ready [Input.Enter, Input.Enter]
+                    loseTurn state = foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId move)))
+                    lost = iterate loseTurn started !! 100
+                    acknowledged = choose lost Input.Enter
+                    atRival = acknowledged{playerPosition = Position 5 4}
+                    rematched = foldl' choose atRival ([Input.Enter] <> selection <> [Input.Enter])
+                assertBool "Expected the starter choice to remove both balls and start the matching rival battle" $
+                  map species (members (party started)) == [starter]
+                    && not (Map.member (ObjectId rivalBall) (objects started))
+                    && fmap battleDefinition (battle started) == Map.lookup rival (configBattles (combat base))
+                assertBool "Expected a lost battle to be acknowledged without completing the rival story" $
+                  fmap battleOutcome (battle lost) == Just (Just Defeat)
+                    && battle acknowledged == Nothing
+                    && Map.lookup (FlagId "lab.rival-battle-completed") (flags acknowledged) /= Just True
+                assertBool "Expected a fresh rival battle without removing objects or changing the player's party" $
+                  fmap battleDefinition (battle rematched) == Map.lookup rival (configBattles (combat base))
+                    && fmap battleOutcome (battle rematched) == Just Nothing
+                    && fmap battleTurn (battle rematched) == Just 0
+                    && activeInteraction rematched == Nothing
+                    && objects rematched == objects acknowledged
+                    && party rematched == party acknowledged
+    ]
+
 snapshotTests :: TestTree
 snapshotTests =
   testGroup
@@ -283,6 +327,7 @@ tests =
       opponentTests,
       profileTests,
       progressionTests,
+      redTests,
       snapshotTests,
       statusTests,
       turnTests,
@@ -353,12 +398,64 @@ turnTests =
             won = iterate (\state -> foldl' Engine.applyEvent state (Turn.resolveAction state (UseMove (MoveId "strike")))) opened !! 2
             (closed, _) = Engine.step won Input.Enter
          in assertBool "Expected a visible outcome, then story effects and exploration" (Map.lookup (FlagId "practice.won") (flags won) == Nothing && battle closed == Nothing && Map.lookup (FlagId "practice.won") (flags closed) == Just True && playerPosition closed == playerPosition configured),
-      testCase "Battle menus support arrows, j/k and cancellation" $
+      testCase "Battle menus support arrows, j/k and Escape without Back entries" $ do
+        let opened = start fixture{inventory = Map.singleton "tonic" 1, party = Party [basicCritter 20 2 20 "leafling", basicCritter 10 2 10 "leafling"]}
+            (next, _) = Engine.step opened (Input.Character 'j')
+            (previous, _) = Engine.step next (Input.Character 'k')
+            (moves, _) = Engine.step previous Input.Enter
+        assertBool "Expected context-sensitive menu commands" (fmap battleSelected (battle next) == Just 2 && fmap battleSelected (battle previous) == Just 0 && fmap battlePhase (battle moves) == Just MoveMenu && Engine.commandFor opened (Input.Character 'p') == Nothing)
+        forM_ [ItemMenu, MoveMenu, SwitchMenu] $ \phase -> do
+          let state = opened{battle = fmap (\active -> active{battlePhase = phase}) (battle opened)}
+              (selected, _) = Engine.step state Input.Down
+              (actions, _) = Engine.step selected Input.Escape
+          assertBool "Expected selection to follow the menu layout and Escape to return to actions" (fmap battleSelected (battle selected) == Just (if phase == SwitchMenu then 1 else 0) && fmap battlePhase (battle actions) == Just ActionMenu),
+      testCase "Selecting the active critter returns to actions without consuming a turn" $
+        forM_ [0, 2] $ \index ->
+          let opened = start fixture{party = Party [basicCritter 20 2 20 "leafling", basicCritter 0 2 10 "leafling", basicCritter 10 2 10 "leafling"]}
+              choosing = opened{battle = fmap (\active -> active{battleActivePlayer = index, battlePhase = SwitchMenu, battleSelected = index}) (battle opened)}
+              (confirmed, events) = Engine.step choosing Input.Enter
+              expected = choosing{battle = fmap (\active -> active{battlePhase = ActionMenu, battleSelected = 0}) (battle choosing)}
+           in assertBool "Expected only the menu phase and selection to change, with replayable events" $
+                confirmed == expected && foldl' Engine.applyEvent choosing events == expected,
+      testCase "Escape preserves Items selection in the action menu" $
         let opened = start fixture
-            (moves, _) = Engine.step opened Input.Enter
-            (back, _) = Engine.step moves (Input.Character 'j')
-            (actions, _) = Engine.step back Input.Enter
-         in assertBool "Expected context-sensitive menu commands" (fmap battlePhase (battle moves) == Just MoveMenu && fmap battlePhase (battle actions) == Just ActionMenu && Engine.commandFor opened (Input.Character 'p') == Nothing)
+            (selected, _) = Engine.step opened Input.Down
+         in assertBool "Expected Items to remain selected with no state changes or events" $
+              fmap battleSelected (battle selected) == Just 2
+                && Engine.step selected Input.Escape == (selected, []),
+      testCase "Navigate action menus by their displayed rows and columns"
+        $ forM_
+          [ (False, 0, Input.Down, 2),
+            (False, 2, Input.Up, 0),
+            (False, 0, Input.Right, 1),
+            (False, 1, Input.Left, 0),
+            (False, 1, Input.Down, 1),
+            (False, 2, Input.Right, 2),
+            (False, 2, Input.Left, 2),
+            (False, 1, Input.Right, 1),
+            (True, 1, Input.Down, 3),
+            (True, 3, Input.Up, 1),
+            (True, 2, Input.Right, 3),
+            (True, 3, Input.Left, 2),
+            (True, 0, Input.Character 'j', 2),
+            (True, 2, Input.Character 'k', 0),
+            (True, 2, Input.Character 'l', 3),
+            (True, 3, Input.Character 'h', 2)
+          ]
+        $ \(allowEscape, index, input, expected) ->
+          let opened = start fixture
+              state = opened{battle = fmap (\active -> active{battleDefinition = (battleDefinition active){definitionAllowEscape = allowEscape}, battleSelected = index}) (battle opened)}
+              (selected, _) = Engine.step state input
+           in assertBool "Expected grid navigation to change only the selected battle entry" $
+                selected == state{battle = fmap (\active -> active{battleSelected = expected}) (battle state)},
+      testCase "Keep party selection vertical in every battle party menu" $
+        forM_ [ItemTargetMenu, ReplacementMenu, SwitchMenu] $ \phase ->
+          forM_ [(Input.Down, 3), (Input.Up, 1), (Input.Left, 2), (Input.Right, 2), (Input.Character 'j', 3), (Input.Character 'k', 1), (Input.Character 'h', 2), (Input.Character 'l', 2)] $ \(input, expected) ->
+            let opened = start fixture{party = Party (replicate 6 (basicCritter 10 2 10 "leafling"))}
+                state = opened{battle = fmap (\active -> active{battlePhase = phase, battleSelected = 2}) (battle opened)}
+                (selected, _) = Engine.step state input
+             in assertBool "Expected Up/Down to move one entry and Left/Right to stay put" $
+                  selected == state{battle = fmap (\active -> active{battleSelected = expected}) (battle state)}
     ]
 
 variationTests :: TestTree
@@ -406,11 +503,82 @@ viewTests =
         let opened = start fixture
             (moves, _) = Engine.step opened Input.Enter
             frame = TUI.renderFrame moves
-         in assertBool "Expected health, moves and controls within the terminal viewport" (length frame == TUI.height && all ((== TUI.width * 2) . sum . map Cell.columns) frame && all (\text -> Text.isInfixOf text (TUI.render moves)) ["Opponent: stonekin", "You: leafling", "HP 20/20", "> Basic strike", "Enter: Confirm"]),
+         in assertBool "Expected health and moves within the terminal viewport" (length frame == TUI.height && all ((== TUI.width * 2) . sum . map Cell.columns) frame && all (\text -> Text.isInfixOf text (TUI.render moves)) ["Opponent: stonekin", "You: leafling", "HP 20/20", "> Basic strike"]),
+      testCase "Use the bottom option box for actions, moves, items and continuing"
+        $ forM_
+          [ (ActionMenu, [optionRow " > Moves" "   Party", optionRow "   Items" ""]),
+            (MoveMenu, [optionRow " > Basic strike  5/5" "", optionRow "" ""]),
+            (ItemMenu, [optionRow " > tonic x1" "", optionRow "" ""]),
+            (Finished, [optionRow " > Continue" "", optionRow "" ""])
+          ]
+        $ \(phase, options) ->
+          let opened = start fixture{inventory = Map.singleton "tonic" 1}
+              state = opened{battle = fmap (\current -> current{battlePhase = phase}) (battle opened)}
+              frame = TUI.renderFrame state
+              drawing = map (Text.concat . map Cell.glyph) frame
+              box = border "┌" "┐" : options <> [border "└" "┘"]
+           in assertBool "Expected the correct options within a bottom-aligned border without help text" $
+                length frame == TUI.height
+                  && all ((== TUI.width * 2) . sum . map Cell.columns) frame
+                  && drop (TUI.height - length box) drawing == box
+                  && all (\hint -> not (Text.isInfixOf hint (Text.concat drawing))) ["Choose an action:", "Choose a move:", "Choose an item:", "Battle complete:", "Select  Enter:", "Enter: Confirm", "Enter: Continue", "q: Quit"],
+      testCase "Keep an empty item menu blank and allow Escape" $
+        let opened = start fixture
+            items = opened{battle = fmap (\active -> active{battlePhase = ItemMenu}) (battle opened)}
+            (confirmed, events) = Engine.step items Input.Enter
+            (actions, _) = Engine.step confirmed Input.Escape
+            drawing = map (Text.concat . map Cell.glyph) (TUI.renderFrame confirmed)
+         in assertBool "Expected an empty two-row box, no confirmation effects and Escape navigation" $
+              drop (TUI.height - 4) drawing == [border "┌" "┐", optionRow "" "", optionRow "" "", border "└" "┘"]
+                && confirmed == items
+                && null events
+                && fmap battlePhase (battle actions) == Just ActionMenu,
+      testCase "Show the active critter when it is the only party member" $
+        let opened = start fixture
+            (partySelected, _) = Engine.step opened Input.Right
+            (choosing, _) = Engine.step partySelected Input.Enter
+            drawing = map (Text.concat . map Cell.glyph) (TUI.renderFrame choosing)
+         in assertBool "Expected a visible active critter and confirmation to return to actions" $
+              fmap battlePhase (battle choosing) == Just SwitchMenu
+                && drawing !! 11 == Text.justifyLeft (TUI.width * 2) ' ' "> leafling  HP 20/20"
+                && fst (Engine.step choosing Input.Enter) == opened,
+      testCase "List the whole switch party in order while preserving switch validation" $ do
+        let opened = start fixture{party = Party [basicCritter 20 2 20 "leafling", basicCritter 0 2 10 "leafling", basicCritter 10 2 10 "leafling"]}
+            choosing = opened{battle = fmap (\active -> active{battlePhase = SwitchMenu}) (battle opened)}
+            drawing = map (Text.concat . map Cell.glyph) (TUI.renderFrame choosing)
+        assertBool "Expected active, fainted and available critters in party order" $
+          take 3 (drop 11 drawing) == map (Text.justifyLeft (TUI.width * 2) ' ') ["> leafling  HP 20/20", "  leafling  HP 0/10", "  leafling  HP 10/10"]
+        let fainted = choosing{battle = fmap (\active -> active{battleSelected = 1}) (battle choosing)}
+        assertBool "Expected no state change or turn when selecting a fainted critter" $
+          Engine.step fainted Input.Enter == (fainted, [])
+        let selected = choosing{battle = fmap (\active -> active{battleSelected = 2}) (battle choosing)}
+            (switched, _) = Engine.step selected Input.Enter
+            replacement = choosing{battle = fmap (\active -> active{battleActivePlayer = 1, battlePhase = ReplacementMenu}) (battle choosing)}
+            replacementRows = map (Text.concat . map Cell.glyph) (TUI.renderFrame replacement)
+        assertBool "Expected a valid choice to switch using its original party index and consume one turn" $
+          fmap battleActivePlayer (battle switched) == Just 2 && fmap battleTurn (battle switched) == Just 1
+        assertBool "Expected forced replacement to retain only eligible critters" $
+          take 3 (drop 11 replacementRows) == map (Text.justifyLeft (TUI.width * 2) ' ') ["> leafling  HP 20/20", "  leafling  HP 10/10", ""],
+      testCase "Keep switching, replacement and item targets as party lists" $
+        forM_ [ItemTargetMenu, ReplacementMenu, SwitchMenu] $ \phase ->
+          let opened = start fixture{party = Party (replicate 6 (basicCritter 10 2 10 "leafling"))}
+              state = opened{battle = fmap (\current -> current{battlePhase = phase}) (battle opened)}
+              frame = TUI.renderFrame state
+              drawing = map (Text.concat . map Cell.glyph) frame
+           in assertBool "Expected full-width party entries without an option box" $
+                length frame == TUI.height
+                  && drawing !! 11 == Text.justifyLeft (TUI.width * 2) ' ' "> leafling  HP 10/10"
+                  && Text.count "leafling  HP" (Text.concat drawing) == (if phase == ReplacementMenu then 5 else 6)
+                  && not (any (Text.isPrefixOf "  Back") drawing)
+                  && all (\hint -> not (Text.isInfixOf hint (Text.concat drawing))) ["Choose a critter:", "Choose a target:", "Choose a replacement:", "Select  Enter:", "Enter: Switch", "Esc: Back", "q: Quit"]
+                  && not (Text.isInfixOf "┌" (Text.concat drawing)),
       testCase "Keep selected entries visible for large parties" $
         let configured = fixture{maxPartySize = 40, party = Party (replicate 40 (basicCritter 10 2 10 "leafling"))}
             opened = start configured
             active = fmap (\current -> current{battlePhase = SwitchMenu, battleSelected = 35}) (battle opened)
             drawing = TUI.render opened{battle = active}
-         in assertBool "Expected the selected entry and footer to remain visible" (Text.isInfixOf "> leafling" drawing && Text.isInfixOf "Esc: Back" drawing)
+         in assertBool "Expected the selected entry to remain visible without a help footer" (Text.isInfixOf "> leafling" drawing && not (Text.isInfixOf "Esc: Back" drawing))
     ]
+  where
+    border left right = left <> Text.replicate (TUI.width * 2 - 2) "─" <> right
+    optionRow left right = "│" <> Text.justifyLeft (TUI.width - 1) ' ' left <> Text.justifyLeft (TUI.width - 1) ' ' right <> "│"

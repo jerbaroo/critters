@@ -12,7 +12,7 @@ import Critters.State.ActiveInteraction (ActiveInteraction (..))
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.Battle qualified as Battle
 import Critters.State.BattleDefinition qualified as Definition
-import Critters.State.BattlePhase (BattlePhase (..))
+import Critters.State.BattlePhase (BattlePhase (ItemTargetMenu, ReplacementMenu, SwitchMenu))
 import Critters.State.BattleProfile qualified as Profile
 import Critters.State.Choice qualified as Choice
 import Critters.State.Critter qualified as Critter
@@ -39,9 +39,6 @@ import Witch (from)
 -- | Editable viewport dimensions, in tiles. Each tile uses two terminal columns.
 height :: Int
 height = 24
-
-width :: Int
-width = 32
 
 input :: FilePath -> IO Input
 input logPath = do
@@ -79,16 +76,19 @@ renderBattle :: GameState -> [[Cell]]
 renderBattle state = case BattleCommon.contextFor state of
   Nothing -> renderText height ""
   Just context ->
-    renderText 6 (Text.intercalate "\n" ["Battle — " <> Definition.definitionName (Battle.battleDefinition active), "", description "Opponent" BattleCommon.Enemy context, description "You" BattleCommon.Player context, "", ""])
-      <> renderText 5 (Text.intercalate "\n" (reverse (take 5 (reverse (Battle.battleMessages active)))))
-      <> renderText 1 (case Battle.battlePhase active of Finished -> "Battle complete:"; MoveMenu -> "Choose a move:"; ItemMenu -> "Choose an item:"; ItemTargetMenu -> "Choose a target:"; ReplacementMenu -> "Choose a replacement:"; SwitchMenu -> "Choose a critter:"; ActionMenu -> "Choose an action:")
-      <> concatMap (renderText 1) (take menuHeight (drop offset choices <> repeat ""))
-      <> renderText 1 (case Battle.battlePhase active of Finished -> "Enter: Continue  q: Quit"; ReplacementMenu -> "↑/↓ j/k: Select  Enter: Switch  q: Quit"; _ -> "↑/↓ j/k: Select  Enter: Confirm  Esc: Back  q: Quit")
+    if Battle.battlePhase active `elem` [ItemTargetMenu, ReplacementMenu, SwitchMenu]
+      then details <> concatMap (renderText 1) (take menuHeight (drop offset choices <> repeat ""))
+      else take (height - length options) (details <> renderText height "") <> options
     where
       active = BattleCommon.contextBattle context
-      choices = [(if index == Battle.battleSelected active then "> " else "  ") <> label | (index, (label, _)) <- zip [0 ..] (BattleMenu.entries state)]
-      menuHeight = height - 13
+      choices = [(if index == Battle.battleSelected active then "> " else "  ") <> label | (index, label) <- zip [0 ..] labels]
+      details =
+        renderText 6 (Text.intercalate "\n" ["Battle — " <> Definition.definitionName (Battle.battleDefinition active), "", description "Opponent" BattleCommon.Enemy context, description "You" BattleCommon.Player context, "", ""])
+          <> renderText 5 (Text.intercalate "\n" (reverse (take 5 (reverse (Battle.battleMessages active)))))
+      labels = map fst (BattleMenu.entries state)
+      menuHeight = height - length details
       offset = max 0 (Battle.battleSelected active - menuHeight + 1)
+      options = renderOptions (Battle.battleSelected active) labels
   where
     description label side context = case BattleCommon.active side context of
       Nothing -> label <> ": —"
@@ -97,15 +97,12 @@ renderBattle state = case BattleCommon.contextFor state of
 
 renderChoices :: ActiveInteraction -> [[Cell]]
 renderChoices active =
-  renderText height (Text.intercalate "\n" (question : "" : entries))
+  renderText (height - length options) question <> options
   where
-    entries =
-      [ (if activeSelectedChoice active == Just index then "> " else "  ") <> Choice.choiceLabel choice
-      | (index, choice) <- zip [0 ..] (Interaction.interactionChoices (activeScript active))
-      ]
+    options = renderOptions (maybe (-1) id (activeSelectedChoice active)) (map Choice.choiceLabel (Interaction.interactionChoices (activeScript active)))
     question = case drop (activeDialogueIndex active) (Interaction.interactionDialogue (activeScript active)) of
       line : _ | activeDialogueIndex active >= 0 -> line
-      _ -> "Choose:"
+      _ -> ""
 
 -- | Two padded text rows, clipped to the viewport's column width.
 renderConversation :: Text -> [[Cell]]
@@ -177,11 +174,23 @@ renderFrame state
       | row <- [0 .. height - 1]
       ]
 
--- | Display the party within the viewport, reserving the last row for closing.
+-- | Two options per row, with at least two rows and no upper row limit.
+renderOptions :: Int -> [Text] -> [[Cell]]
+renderOptions selected labels =
+  border "┌" "┐" : pairs (entries <> replicate (4 - length labels) "") <> [border "└" "┘"]
+  where
+    border left right = concat (renderText 1 (left <> Text.replicate (width * 2 - 2) "─" <> right))
+    entries = [(if index == selected then " > " else "   ") <> label | (index, label) <- zip [0 ..] labels]
+    option label = concat (renderTextColumns (width - 1) 1 label)
+    pairs [] = []
+    pairs [left] = [row left ""]
+    pairs (left : right : rest) = row left right : pairs rest
+    row left right = [Cell "│" True] <> option left <> option right <> [Cell "│" True]
+
+-- | Display the party within the viewport.
 renderParty :: GameState -> [[Cell]]
 renderParty state =
-  renderText (height - 1) (Text.intercalate "\n" (heading : "" : entries))
-    <> renderText 1 "Esc: Close"
+  renderText height (Text.intercalate "\n" (heading : "" : entries))
   where
     critters = Party.members (party state)
     entries = case critters of
@@ -210,9 +219,11 @@ renderRow (first : rest) =
 
 -- | Wrap and pad text to the viewport's column width, clipping extra rows.
 renderText :: Int -> Text -> [[Cell]]
-renderText rowCount message = map row $ take rowCount (wrapped <> repeat "")
+renderText = renderTextColumns (width * 2)
+
+renderTextColumns :: Int -> Int -> Text -> [[Cell]]
+renderTextColumns columns rowCount message = map row $ take rowCount (wrapped <> repeat "")
   where
-    columns = width * 2
     plain = Text.filter (\value -> value == '\n' || not (isControl value)) message
     row line =
       [ cell
@@ -234,6 +245,9 @@ renderText rowCount message = map row $ take rowCount (wrapped <> repeat "")
           let (line, rest) = split columns "" remainingText
            in line : if Text.null rest then [] else wrap rest
     wrapped = concatMap wrap (Text.splitOn "\n" plain)
+
+width :: Int
+width = 32
 
 writeLog :: [[Cell]] -> FilePath -> Text -> IO ()
 writeLog _ = TextIO.appendFile

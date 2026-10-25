@@ -424,15 +424,15 @@ partyRenderTests :: TestTree
 partyRenderTests =
   testGroup
     "Party rendering"
-    [ testCase "Clip a large party while keeping the close hint visible" $ do
+    [ testCase "Clip a large party using the full viewport without a hint footer" $ do
         let critters = replicate TUI.height (basicCritter 1 1 1 "visible") <> [basicCritter 1 1 1 "hidden"]
             state = initialState{maxPartySize = length critters, party = Party critters, partyOpen = True}
             drawing = rows state
         assertViewport state
-        assertBool "Expected the first members to be visible, overflow clipped, and the footer retained" $
+        assertBool "Expected party members to fill the viewport and overflow to be clipped" $
           Text.isPrefixOf "1. visible" (drawing !! 2)
             && not (Text.isInfixOf "hidden" (Text.concat drawing))
-            && Text.stripEnd (last drawing) == "Esc: Close",
+            && Text.count ". visible" (Text.concat drawing) == TUI.height - 2,
       testCase "Display critter details in party order" $ do
         let state =
               initialState
@@ -448,9 +448,9 @@ partyRenderTests =
         let state = initialState{partyOpen = True}
             drawing = rows state
         assertViewport state
-        assertBool "Expected a zero count, empty-party message and close hint" $
+        assertBool "Expected a zero count and empty-party message without a hint footer" $
           map Text.stripEnd (take 3 drawing) == ["Party — 0 / 6", "", "Your party is empty"]
-            && Text.stripEnd (last drawing) == "Esc: Close",
+            && all (Text.null . Text.stripEnd) (drop 3 drawing),
       testCase "Open visibly with p and restore the overworld with p or Escape" $
         forM_ [Input.Character 'p', Input.Escape] $ \closeInput ->
           let (opened, _) = Engine.step npcState (Input.Character 'p')
@@ -551,7 +551,7 @@ partyViewTests =
         forM_ ([Input.Down, Input.Enter, Input.Left, Input.Right, Input.Up, Input.Character 'x'] <> map Input.Character "hjkl") $ \input ->
           assertBool "Expected gameplay inputs to leave the party view and world unchanged" $
             Engine.commandFor opened input == Nothing && Engine.step opened input == (opened, [])
-        forM_ [Command.AdvanceConversation, Command.ConfirmSelection, Command.EndConversation, Command.Interact, Command.OpenParty, Command.SelectNext, Command.SelectPrevious, Command.Walk East, Command.Walk North, Command.Walk South, Command.Walk West] $ \command ->
+        forM_ [Command.AdvanceConversation, Command.ConfirmSelection, Command.EndConversation, Command.Interact, Command.OpenParty, Command.Select East, Command.Select North, Command.Select South, Command.Select West, Command.SelectNext, Command.SelectPrevious, Command.Walk East, Command.Walk North, Command.Walk South, Command.Walk West] $ \command ->
           assertBool "Expected direct commands to respect the open party view" (Engine.eventsFor opened command == []),
       testCase "Keep conversation and party contexts separate" $
         let talking = npcState{conversation = Just (Conversation 0 (NpcId "guide"))}

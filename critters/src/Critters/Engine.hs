@@ -11,6 +11,7 @@ import Critters.Event qualified as Event
 import Critters.Input (Input)
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (..))
+import Critters.Selection qualified as Selection
 import Critters.State.ActiveInteraction (ActiveInteraction (..))
 import Critters.State.Battle (Battle)
 import Critters.State.Battle qualified as Battle
@@ -101,12 +102,16 @@ commandFor state input
   | isJust (battle state) = BattleEngine.commandFor input
   | Just active <- activeInteraction state = case activeSelectedChoice active of
       Just _ -> case input of
-        Input.Character 'j' -> Just SelectNext
-        Input.Character 'k' -> Just SelectPrevious
-        Input.Down -> Just SelectNext
+        Input.Character 'h' -> Just (Select West)
+        Input.Character 'j' -> Just (Select South)
+        Input.Character 'k' -> Just (Select North)
+        Input.Character 'l' -> Just (Select East)
+        Input.Down -> Just (Select South)
         Input.Enter -> Just ConfirmSelection
         Input.Escape -> Just CloseMenu
-        Input.Up -> Just SelectPrevious
+        Input.Left -> Just (Select West)
+        Input.Right -> Just (Select East)
+        Input.Up -> Just (Select North)
         _ -> Nothing
       Nothing -> case input of
         Input.Enter -> Just AdvanceConversation
@@ -225,8 +230,9 @@ interactionEvents state active = \case
       [] -> []
     _ -> []
   EndConversation -> [Event.InteractionEnded]
-  SelectNext -> selectChoice 1 active
-  SelectPrevious -> selectChoice (-1) active
+  Select direction -> selectChoice (\count -> Selection.moveSelection 2 count direction) active
+  SelectNext -> selectChoice (\count index -> min (count - 1) (index + 1)) active
+  SelectPrevious -> selectChoice (\_ index -> max 0 (index - 1)) active
   _ -> []
 
 move :: Direction -> Position -> Position
@@ -254,11 +260,11 @@ movementEvents state direction destination
 occupied :: GameState -> Position -> Bool
 occupied state position = isJust (GameState.npcAt state position) || isJust (GameState.objectAt state position)
 
-selectChoice :: Int -> ActiveInteraction -> [Event]
-selectChoice delta active = case activeSelectedChoice active of
+selectChoice :: (Int -> Int -> Int) -> ActiveInteraction -> [Event]
+selectChoice selection active = case activeSelectedChoice active of
   Just index
     | index >= 0 && index < count ->
-        let next = max 0 (min (count - 1) (index + delta))
+        let next = selection count index
          in [Event.InteractionChoiceSelected next | next /= index]
   _ -> []
   where

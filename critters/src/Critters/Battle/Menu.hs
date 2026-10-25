@@ -21,11 +21,11 @@ entries state = case Common.contextFor state of
   Just context -> case Battle.battlePhase (Common.contextBattle context) of
     ActionMenu -> [("Moves", GoTo MoveMenu), ("Party", GoTo SwitchMenu), ("Items", GoTo ItemMenu)] <> [("Escape", Perform EscapeBattle) | Definition.definitionAllowEscape (Battle.battleDefinition (Common.contextBattle context))]
     Finished -> [("Continue", Finish)]
-    ItemMenu -> mapMaybe (itemEntry context) (Map.toAscList (inventory state)) <> [("Back", GoTo ActionMenu)]
+    ItemMenu -> mapMaybe (itemEntry context) (Map.toAscList (inventory state))
     ItemTargetMenu -> partyEntries context True
-    MoveMenu -> [(Move.moveName move <> resource move identifier context, Perform (UseMove identifier)) | (identifier, move) <- Common.availableMoves Common.Player context] <> [("Back", GoTo ActionMenu)]
+    MoveMenu -> [(Move.moveName move <> resource move identifier context, Perform (UseMove identifier)) | (identifier, move) <- Common.availableMoves Common.Player context]
     ReplacementMenu -> partyEntries context False
-    SwitchMenu -> partyEntries context False <> [("Back", GoTo ActionMenu)]
+    SwitchMenu -> partyEntries context False
   where
     itemEntry context (identifier, count)
       | count <= 0 = Nothing
@@ -35,7 +35,7 @@ entries state = case Common.contextFor state of
     partyEntries context targeting =
       [ (Common.displayName context critter <> "  HP " <> from (show (Critter.hitPoints critter)) <> "/" <> from (show (Critter.maxHitPoints critter)), Perform (if targeting then UseItem (maybe "" id (Battle.battleSelectedItem (Common.contextBattle context))) index else SwitchCritter index))
       | (index, critter) <- zip [0 ..] (Common.allCritters Common.Player context),
-        targeting || (index /= Common.activeIndex Common.Player context && Common.usable critter)
+        targeting || Battle.battlePhase (Common.contextBattle context) == SwitchMenu || (index /= Common.activeIndex Common.Player context && Common.usable critter)
       ]
     resource move identifier context
       | Move.moveMaxUses move == 0 = ""

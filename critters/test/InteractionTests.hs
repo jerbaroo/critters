@@ -199,28 +199,59 @@ interactionTests =
                 && Map.lookup permission (flags cancelled) == Nothing
                 && Map.lookup permission (flags finished) == Just True
                 && activeInteraction finished == Nothing,
-      testCase "Navigate choices with arrows and j/k, clamping at the ends" $
+      testCase "Navigate a row of choices with Left/Right and h/l" $
         let (opened, _) = Engine.step permitted Input.Enter
-         in forM_ [(Input.Down, Input.Up), (Input.Character 'j', Input.Character 'k')] $ \(next, previous) -> do
+         in forM_ [(Input.Right, Input.Left), (Input.Character 'l', Input.Character 'h')] $ \(next, previous) -> do
               let (selected, _) = Engine.step opened next
                   (lastChoice, extra) = Engine.step selected next
                   (firstChoice, _) = Engine.step selected previous
               assertBool "Expected selection commands, bounds, and a return to the first choice" $
-                Engine.commandFor opened next == Just Command.SelectNext
-                  && Engine.commandFor opened previous == Just Command.SelectPrevious
+                Engine.commandFor opened next == Just (Command.Select East)
+                  && Engine.commandFor opened previous == Just (Command.Select West)
                   && (activeSelectedChoice =<< activeInteraction selected) == Just 1
                   && lastChoice == selected
                   && null extra
                   && (activeSelectedChoice =<< activeInteraction firstChoice) == Just 0,
+      testCase "Navigate choice grids by row and column without entering empty slots"
+        $ forM_
+          [ (3, 0, Input.Down, South, 2),
+            (3, 2, Input.Up, North, 0),
+            (3, 1, Input.Down, South, 1),
+            (3, 2, Input.Right, East, 2),
+            (3, 2, Input.Left, West, 2),
+            (4, 1, Input.Down, South, 3),
+            (4, 3, Input.Up, North, 1),
+            (4, 1, Input.Right, East, 1),
+            (4, 2, Input.Left, West, 2),
+            (4, 0, Input.Up, North, 0),
+            (4, 3, Input.Down, South, 3),
+            (5, 2, Input.Character 'j', South, 4),
+            (5, 4, Input.Character 'k', North, 2),
+            (5, 2, Input.Character 'l', East, 3),
+            (5, 3, Input.Character 'h', West, 2),
+            (5, 3, Input.Down, South, 3),
+            (5, 4, Input.Right, East, 4)
+          ]
+        $ \(count, index, input, direction, expected) ->
+          let active = ActiveInteraction 0 gift{interactionChoices = replicate count (Choice [] "Option")} (Just index)
+              state = permitted{activeInteraction = Just active}
+              (selected, events) = Engine.step state input
+           in assertBool "Expected only the selected index to change according to the grid" $
+                Engine.commandFor state input == Just (Command.Select direction)
+                  && selected == state{activeInteraction = Just active{activeSelectedChoice = Just expected}}
+                  && events == [Event.InteractionChoiceSelected expected | expected /= index],
       testCase "No and Escape both leave the offer available" $
-        forM_ [[Input.Enter, Input.Down, Input.Enter], [Input.Enter, Input.Escape]] $ \inputs ->
+        forM_ [[Input.Enter, Input.Right, Input.Enter], [Input.Enter, Input.Escape]] $ \inputs ->
           let (closed, _) = play permitted inputs
            in assertBool "Expected no lasting changes after declining or cancelling" (closed == permitted),
       testCase "Block exploration and party commands during an interaction" $
         let (opened, _) = Engine.step permitted Input.Enter
          in forM_ [Input.Left, Input.Right, Input.Character 'h', Input.Character 'l', Input.Character 'p'] $ \input ->
-              assertBool "Expected the active choice and world to remain unchanged" $
-                Engine.step opened input == (opened, []) && Engine.eventsFor opened (Command.Walk East) == [],
+              let (selected, _) = Engine.step opened input
+               in assertBool "Expected menu navigation to leave the world and party unchanged" $
+                    selected{activeInteraction = activeInteraction opened} == opened
+                      && Engine.eventsFor opened (Command.Walk East) == []
+                      && Engine.eventsFor opened Command.OpenParty == [],
       testCase "A full party shows a message and consumes nothing" $
         let starting = permitted{maxPartySize = 1, party = Party [critter]}
             (rejected, _) = play starting [Input.Enter, Input.Enter]
@@ -340,16 +371,44 @@ tuiTests =
         let (finished, _) = play permitted [Input.Enter, Input.Enter]
          in assertBool "Expected the object before pickup and ground after pickup" $
               Text.isInfixOf "🔴" (TUI.render permitted) && not (Text.isInfixOf "🔴" (TUI.render finished)),
-      testCase "Show the question and selection changes without a controls footer" $
+      testCase "Show choices in a bordered box at the bottom without a controls footer" $
         let (opened, _) = Engine.step permitted Input.Enter
-            (selected, _) = Engine.step opened Input.Down
+            (selected, _) = Engine.step opened Input.Right
             frame = TUI.renderFrame opened
          in assertBool "Expected a fixed viewport and visible, changing choice marker" $
               length frame == TUI.height
                 && all ((== TUI.width * 2) . sum . map Cell.columns) frame
-                && map Text.stripEnd (take 4 (rows opened)) == ["Take this critter?", "", "> Yes", "  No"]
-                && map Text.stripEnd (take 4 (rows selected)) == ["Take this critter?", "", "  Yes", "> No"]
-                && all Text.null (map Text.strip (drop 4 (rows opened))),
+                && map Text.stripEnd (take 1 (rows opened)) == ["Take this critter?"]
+                && drop (TUI.height - 4) (rows opened) == [border "┌" "┐", optionRow " > Yes" "   No", optionRow "" "", border "└" "┘"]
+                && drop (TUI.height - 4) (rows selected) == [border "┌" "┐", optionRow "   Yes" " > No", optionRow "" "", border "└" "┘"]
+                && all Text.null (map Text.strip (take (TUI.height - 5) (drop 1 (rows opened)))),
+      testCase "Show choices without a generated question when dialogue is absent" $
+        let state = permitted{activeInteraction = Just (ActiveInteraction 0 gift{interactionDialogue = []} (Just 0))}
+            drawing = rows state
+         in assertBool "Expected blank space above the choices instead of a generated prompt" $
+              all (Text.null . Text.strip) (take (TUI.height - 4) drawing)
+                && drop (TUI.height - 4) drawing == [border "┌" "┐", optionRow " > Yes" "   No", optionRow "" "", border "└" "┘"],
+      testCase "Size the option box with a minimum of two rows and no maximum" $
+        forM_ ([1 .. 8] <> [50]) $ \count ->
+          let choices = replicate (count - 1) (Choice [] "Option") <> [Choice [] "Last"]
+              state = choiceState (count - 1) choices
+              drawing = rows state
+              boxHeight = max 2 ((count + 1) `div` 2) + 2
+              lastOptionRow = length drawing - boxHeight + 1 + (count - 1) `div` 2
+           in assertBool "Expected all options, a selected final entry and a bottom border" $
+                length drawing == max TUI.height boxHeight
+                  && all ((== TUI.width * 2) . sum . map Cell.columns) (TUI.renderFrame state)
+                  && drawing !! (length drawing - boxHeight) == border "┌" "┐"
+                  && last drawing == border "└" "┘"
+                  && Text.count "Option" (Text.concat drawing) == count - 1
+                  && Text.isInfixOf "> Last" (drawing !! lastOptionRow)
+                  && (even count || Text.isSuffixOf (Text.replicate (TUI.width - 1) " " <> "│") (drawing !! lastOptionRow))
+                  && all (== optionRow "" "") (take (max 0 (2 - (count + 1) `div` 2)) (drop (lastOptionRow + 1) drawing)),
+      testCase "Clip wide and combining option labels within their columns" $
+        let state = choiceState 1 [Choice [] (Text.replicate 15 "界" <> "tail"), Choice [] (Text.replicate 30 "e\x0301" <> "tail")]
+         in assertBool "Expected complete Unicode glyphs and intact borders at the terminal column boundaries" $
+              rows state !! (TUI.height - 3) == "│   " <> Text.replicate 14 "界" <> " > " <> Text.replicate 28 "e\x0301" <> "│"
+                && all ((== TUI.width * 2) . sum . map Cell.columns) (TUI.renderFrame state),
       testCase "Show scripted dialogue over the world and restore it on cancellation" $
         let (opened, _) = Engine.step scene Input.Enter
             (closed, _) = Engine.step opened Input.Escape
@@ -357,6 +416,10 @@ tuiTests =
               Text.isInfixOf "Ask the guide first." (TUI.render opened)
                 && TUI.renderFrame closed == TUI.renderFrame scene
     ]
+  where
+    border left right = left <> Text.replicate (TUI.width * 2 - 2) "─" <> right
+    choiceState selected choices = permitted{activeInteraction = Just (ActiveInteraction 0 gift{interactionChoices = choices} (Just selected))}
+    optionRow left right = "│" <> Text.justifyLeft (TUI.width - 1) ' ' left <> Text.justifyLeft (TUI.width - 1) ' ' right <> "│"
 
 withSaveFile :: (FilePath -> IO a) -> IO a
 withSaveFile action = bracket create removeFile action
