@@ -17,18 +17,18 @@ apply = foldl' Engine.applyEvent
 
 decode :: ByteString.ByteString -> Either Text [Event]
 decode contents = case Aeson.eitherDecodeStrict contents of
-  Right events -> Right events
-  Left _ -> traverse (first from . Aeson.eitherDecodeStrict) (ByteString.lines contents)
+    Right events -> Right events
+    Left _ -> traverse (first from . Aeson.eitherDecodeStrict) (ByteString.lines contents)
 
 -- | Read one JSON event per line. Legacy JSON-array histories are also accepted.
 load :: FilePath -> IO (Either Text [Event])
 load path =
-  tryIOError (ByteString.readFile path) >>= \case
-    Left err -> pure $ Left $ from (ioeGetErrorString err)
-    Right contents -> pure $ decode contents
+    tryIOError (ByteString.readFile path) >>= \case
+        Left err -> pure $ Left $ from (ioeGetErrorString err)
+        Right contents -> pure $ decode contents
 
 -- | Replace the file with one JSON event per line. An empty history writes an empty file.
 save :: FilePath -> [Event] -> IO (Either Text ())
 save path events =
-  first (from . ioeGetErrorString)
-    <$> tryIOError (LazyByteString.writeFile path (LazyByteString.unlines (map Aeson.encode events)))
+    first (from . ioeGetErrorString)
+        <$> tryIOError (LazyByteString.writeFile path (LazyByteString.unlines (map Aeson.encode events)))

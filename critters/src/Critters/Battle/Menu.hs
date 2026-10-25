@@ -17,29 +17,29 @@ import Witch (from)
 
 entries :: GameState -> [(Text, Selection)]
 entries state = case Common.contextFor state of
-  Nothing -> []
-  Just context -> case Battle.battlePhase (Common.contextBattle context) of
-    ActionMenu -> [("Moves", GoTo MoveMenu), ("Party", GoTo SwitchMenu), ("Items", GoTo ItemMenu)] <> [("Escape", Perform EscapeBattle) | Definition.definitionAllowEscape (Battle.battleDefinition (Common.contextBattle context))]
-    Finished -> []
-    Introduction -> []
-    ItemMenu -> mapMaybe (itemEntry context) (Map.toAscList (inventory state))
-    ItemTargetMenu -> partyEntries context True
-    MoveMenu -> [(Move.moveName move <> resource move identifier context, Perform (UseMove identifier)) | (identifier, move) <- Common.availableMoves Common.Player context]
-    ReplacementMenu -> partyEntries context False
-    SwitchMenu -> partyEntries context False
+    Nothing -> []
+    Just context -> case context.battle.phase of
+        ActionMenu -> [("Moves", GoTo MoveMenu), ("Party", GoTo SwitchMenu), ("Items", GoTo ItemMenu)] <> [("Escape", Perform EscapeBattle) | context.battle.definition.allowEscape]
+        Finished -> []
+        Introduction -> []
+        ItemMenu -> mapMaybe (itemEntry context) (Map.toAscList state.inventory)
+        ItemTargetMenu -> partyEntries context True
+        MoveMenu -> [(move.name <> resource move identifier context, Perform (UseMove identifier)) | (identifier, move) <- Common.availableMoves Common.Player context]
+        ReplacementMenu -> partyEntries context False
+        SwitchMenu -> partyEntries context False
   where
     itemEntry context (identifier, count)
-      | count <= 0 = Nothing
-      | otherwise = do
-          definition <- Map.lookup identifier (Config.configItems (Battle.battleConfig (Common.contextBattle context)))
-          if Item.itemCaptureBonus definition > 0 && not (Definition.definitionAllowCapture (Battle.battleDefinition (Common.contextBattle context))) then Nothing else pure ((if Item.itemName definition == "" then identifier else Item.itemName definition) <> " x" <> from (show count), if Item.itemCaptureBonus definition > 0 then Perform (UseItem identifier (-1)) else PickItem identifier)
+        | count <= 0 = Nothing
+        | otherwise = do
+            definition <- Map.lookup identifier context.battle.config.items
+            if definition.captureBonus > 0 && not context.battle.definition.allowCapture then Nothing else pure ((if definition.name == "" then identifier else definition.name) <> " x" <> from (show count), if definition.captureBonus > 0 then Perform (UseItem identifier (-1)) else PickItem identifier)
     partyEntries context targeting =
-      [ (Common.displayName context critter <> "  HP " <> from (show (Critter.hitPoints critter)) <> "/" <> from (show (Critter.maxHitPoints critter)), Perform (if targeting then UseItem (maybe "" id (Battle.battleSelectedItem (Common.contextBattle context))) index else SwitchCritter index))
-      | (index, critter) <- zip [0 ..] (Common.allCritters Common.Player context),
-        targeting || Battle.battlePhase (Common.contextBattle context) == SwitchMenu || (index /= Common.activeIndex Common.Player context && Common.usable critter)
-      ]
+        [ (Common.displayName context critter <> "  HP " <> from (show critter.hitPoints) <> "/" <> from (show critter.maxHitPoints), Perform (if targeting then UseItem (maybe "" id context.battle.selectedItem) index else SwitchCritter index))
+        | (index, critter) <- zip [0 ..] (Common.allCritters Common.Player context)
+        , targeting || context.battle.phase == SwitchMenu || (index /= Common.activeIndex Common.Player context && Common.usable critter)
+        ]
     resource move identifier context
-      | Move.moveMaxUses move == 0 = ""
-      | otherwise = "  " <> from (show (maybe 0 (\critter -> Common.moveRemaining critter identifier move) (Common.active Common.Player context))) <> "/" <> from (show (Move.moveMaxUses move))
+        | move.maxUses == 0 = ""
+        | otherwise = "  " <> from (show (maybe 0 (\critter -> Common.moveRemaining critter identifier move) (Common.active Common.Player context))) <> "/" <> from (show move.maxUses)
 
 data Selection = GoTo BattlePhase | Perform Action | PickItem Text

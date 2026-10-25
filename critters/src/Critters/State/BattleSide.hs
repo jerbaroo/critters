@@ -7,12 +7,12 @@ import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty (..))
 
 data BattleSide = Enemy | Player
-  deriving stock (Eq)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BattleSide)
+    deriving stock (Eq)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BattleSide)
 
 instance HasCodec BattleSide where
-  codec = Codec.stringConstCodec ((Enemy, "enemy") :| [(Player, "player")])
+    codec = Codec.stringConstCodec ((Enemy, "enemy") :| [(Player, "player")])
 
 instance Pretty BattleSide where
-  pretty Enemy = "Enemy"
-  pretty Player = "Player"
+    pretty Enemy = "Enemy"
+    pretty Player = "Player"

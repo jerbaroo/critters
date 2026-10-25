@@ -9,6 +9,7 @@ import Critters.Event (Event)
 import Critters.Event qualified as Event
 import Critters.Number (integer, number)
 import Critters.State.Battle (Battle (..), defaultBattle)
+import Critters.State.Battle qualified as Battle
 import Critters.State.CombatConfig qualified as Config
 import Critters.State.Critter (Critter)
 import Critters.State.Critter qualified as Critter
@@ -25,53 +26,53 @@ import Data.Maybe (fromMaybe, isJust)
 
 eventsForStep :: GameState -> [Event]
 eventsForStep state
-  | isJust (battle state) || not (any Common.usable (Party.members (party state))) = []
-  | otherwise = case find eligible (Config.configEncounters (combat state)) of
-      Nothing -> []
-      Just table
-        | steps < Encounter.encounterMinimumSteps table -> [Event.EncounterAdvanced steps]
-        | otherwise ->
-            let initial = Context defaultBattle{battleConfig = combat state} (inventory state) (maxPartySize state) (party state) (randomSeed state)
-                (encounter, resolved) = State.runState (select table) initial
-                randomFacts = [Event.RandomAdvanced (contextSeed resolved) | contextSeed resolved /= randomSeed state]
-             in case encounter of
-                  Nothing -> Event.EncounterAdvanced steps : randomFacts
-                  Just active -> Event.EncounterAdvanced 0 : randomFacts <> [Event.BattleStarted active]
+    | isJust state.battle || not (any Common.usable state.party.members) = []
+    | otherwise = case find eligible state.combat.encounters of
+        Nothing -> []
+        Just table
+            | steps < table.minimumSteps -> [Event.EncounterAdvanced steps]
+            | otherwise ->
+                let initial = Context defaultBattle{Battle.config = state.combat} state.inventory state.maxPartySize state.party state.randomSeed
+                    (encounter, resolved) = State.runState (select table) initial
+                    randomFacts = [Event.RandomAdvanced resolved.seed | resolved.seed /= state.randomSeed]
+                 in case encounter of
+                        Nothing -> Event.EncounterAdvanced steps : randomFacts
+                        Just active -> Event.EncounterAdvanced 0 : randomFacts <> [Event.BattleStarted active]
   where
-    eligible table = Encounter.encounterChance table > 0 && Encounter.encounterMapId table == playerMap state && maybe False (`elem` Encounter.encounterTiles table) (tileAt (world state) (playerPosition state))
+    eligible table = table.chance > 0 && table.mapId == state.playerMap && maybe False (`elem` table.tiles) (tileAt (world state) state.playerPosition)
     select table = do
-      triggered <- Common.chance (Encounter.encounterChance table)
-      if not triggered
-        then pure Nothing
-        else do
-          chosen <- Common.chooseWeighted [(entry, Entry.entryWeight entry) | entry <- Encounter.encounterEntries table]
-          case chosen of
-            Nothing -> pure Nothing
-            Just entry -> do
-              active <- case entry of
-                Entry.EncounterEntry{} -> pure (either (const Nothing) Just (BattleEngine.beginEncounter state entry))
-                Entry.LegacyEncounterEntry{Entry.entryBattle} -> case BattleEngine.beginBattle state entryBattle of
-                  Left _ -> pure Nothing
-                  Right battle -> do
-                    opponents <- traverse (vary entry) (battleOpponentParty battle)
-                    pure (Just battle{battleOpponentParty = opponents})
-              case active of
-                Nothing -> pure Nothing
-                Just battle -> do
-                  seed <- State.gets contextSeed
-                  pure (Just battle{battleInitialSeed = Just seed})
-    steps = if encounterSteps state == maxBound then maxBound else encounterSteps state + 1
+        triggered <- Common.chance table.chance
+        if not triggered
+            then pure Nothing
+            else do
+                chosen <- Common.chooseWeighted [(entry, entry.weight) | entry <- table.entries]
+                case chosen of
+                    Nothing -> pure Nothing
+                    Just entry -> do
+                        active <- case entry of
+                            Entry.EncounterEntry{} -> pure (either (const Nothing) Just (BattleEngine.beginEncounter state entry))
+                            Entry.LegacyEncounterEntry{Entry.battle} -> case BattleEngine.beginBattle state battle of
+                                Left _ -> pure Nothing
+                                Right started -> do
+                                    opponents <- traverse (vary entry) started.opponentParty
+                                    pure (Just started{Battle.opponentParty = opponents})
+                        case active of
+                            Nothing -> pure Nothing
+                            Just battle -> do
+                                seed <- State.gets (.seed)
+                                pure (Just battle{Battle.initialSeed = Just seed})
+    steps = if state.encounterSteps == maxBound then maxBound else state.encounterSteps + 1
 
 vary :: Entry.EncounterEntry -> Critter -> State Context Critter
 vary Entry.EncounterEntry{} critter = pure critter
-vary Entry.LegacyEncounterEntry{Entry.entryMaxLevel, Entry.entryMinLevel} critter
-  | entryMinLevel == Nothing && entryMaxLevel == Nothing = pure critter
-  | otherwise = do
-      context <- State.get
-      let low = fromMaybe (fromMaybe (Critter.level critter) entryMaxLevel) entryMinLevel
-          high = fromMaybe low entryMaxLevel
-      level <- Common.chooseInt low high
-      let definition = Map.findWithDefault Species.defaultSpecies (Critter.species critter) (Config.configSpecies (battleConfig (contextBattle context)))
-          health = max 1 (integer (Common.evaluate (number (Critter.maxHitPoints critter)) (Rules.rulesHealthFormula (Common.rulesFor context)) [("base", number (Map.findWithDefault (Critter.maxHitPoints critter) "health" (Species.unBaseStats (Species.speciesStats definition)))), ("level", number level)]))
-          remaining = if Critter.hitPoints critter == 0 then 0 else max 1 (min health (integer (number health * number (Critter.hitPoints critter) / number (Critter.maxHitPoints critter))))
-      pure critter{Critter.hitPoints = remaining, Critter.level = level, Critter.maxHitPoints = health}
+vary Entry.LegacyEncounterEntry{Entry.maxLevel, Entry.minLevel} critter
+    | minLevel == Nothing && maxLevel == Nothing = pure critter
+    | otherwise = do
+        context <- State.get
+        let low = fromMaybe (fromMaybe critter.level maxLevel) minLevel
+            high = fromMaybe low maxLevel
+        level <- Common.chooseInt low high
+        let definition = Map.findWithDefault Species.defaultSpecies critter.species context.battle.config.species
+            health = max 1 (integer (Common.evaluate (number critter.maxHitPoints) ((Common.rulesFor context).healthFormula) [("base", number (Map.findWithDefault critter.maxHitPoints "health" definition.stats.values)), ("level", number level)]))
+            remaining = if critter.hitPoints == 0 then 0 else max 1 (min health (integer (number health * number critter.hitPoints / number critter.maxHitPoints)))
+        pure critter{Critter.hitPoints = remaining, Critter.level = level, Critter.maxHitPoints = health}

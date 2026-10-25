@@ -7,12 +7,12 @@ import Data.Aeson qualified as Aeson
 import Data.Text (Text)
 
 newtype FlagId = FlagId Text
-  deriving stock (Eq, Ord)
-  deriving newtype (Aeson.FromJSONKey, Aeson.ToJSONKey)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec FlagId)
+    deriving stock (Eq, Ord)
+    deriving newtype (Aeson.FromJSONKey, Aeson.ToJSONKey)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec FlagId)
 
 instance HasCodec FlagId where
-  codec = Codec.dimapCodec FlagId (\(FlagId identifier) -> identifier) Codec.codec
+    codec = Codec.dimapCodec FlagId (\(FlagId identifier) -> identifier) Codec.codec
 
 instance Pretty FlagId where
-  pretty (FlagId identifier) = identifier
+    pretty (FlagId identifier) = identifier

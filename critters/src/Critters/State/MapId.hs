@@ -7,12 +7,12 @@ import Data.Aeson qualified as Aeson
 import Data.Text (Text)
 
 newtype MapId = MapId Text
-  deriving stock (Eq, Ord)
-  deriving newtype (Aeson.FromJSONKey, Aeson.ToJSONKey)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec MapId)
+    deriving stock (Eq, Ord)
+    deriving newtype (Aeson.FromJSONKey, Aeson.ToJSONKey)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec MapId)
 
 instance HasCodec MapId where
-  codec = Codec.dimapCodec MapId (\(MapId name) -> name) Codec.codec
+    codec = Codec.dimapCodec MapId (\(MapId name) -> name) Codec.codec
 
 instance Pretty MapId where
-  pretty (MapId name) = name
+    pretty (MapId name) = name

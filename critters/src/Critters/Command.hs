@@ -5,31 +5,31 @@ import Critters.Input.Direction (Direction (..))
 import Critters.Pretty (Pretty (..))
 
 data Command
-  = ActInBattle Action
-  | AdvanceConversation
-  | CloseMenu
-  | ConfirmSelection
-  | EndConversation
-  | Interact
-  | OpenParty
-  | Quit
-  | Select Direction
-  | SelectNext
-  | SelectPrevious
-  | Walk Direction
-  deriving stock (Eq)
+    = ActInBattle Action
+    | AdvanceConversation
+    | CloseMenu
+    | ConfirmSelection
+    | EndConversation
+    | Interact
+    | OpenParty
+    | Quit
+    | Select Direction
+    | SelectNext
+    | SelectPrevious
+    | Walk Direction
+    deriving stock (Eq)
 
 instance Pretty Command where
-  pretty = \case
-    ActInBattle action -> "ActInBattle " <> pretty action
-    AdvanceConversation -> "AdvanceConversation"
-    CloseMenu -> "CloseMenu"
-    ConfirmSelection -> "ConfirmSelection"
-    EndConversation -> "EndConversation"
-    Interact -> "Interact"
-    OpenParty -> "OpenParty"
-    Quit -> "Quit"
-    Select direction -> "Select " <> pretty direction
-    SelectNext -> "SelectNext"
-    SelectPrevious -> "SelectPrevious"
-    Walk direction -> "Walk " <> pretty direction
+    pretty = \case
+        ActInBattle action -> "ActInBattle " <> pretty action
+        AdvanceConversation -> "AdvanceConversation"
+        CloseMenu -> "CloseMenu"
+        ConfirmSelection -> "ConfirmSelection"
+        EndConversation -> "EndConversation"
+        Interact -> "Interact"
+        OpenParty -> "OpenParty"
+        Quit -> "Quit"
+        Select direction -> "Select " <> pretty direction
+        SelectNext -> "SelectNext"
+        SelectPrevious -> "SelectPrevious"
+        Walk direction -> "Walk " <> pretty direction

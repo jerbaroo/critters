@@ -14,6 +14,7 @@ import Critters.Input.Direction (Direction (..))
 import Critters.Number qualified as Number
 import Critters.Selection qualified as Selection
 import Critters.State.Battle (Battle (..), defaultBattle)
+import Critters.State.Battle qualified as Battle
 import Critters.State.BattleDefinition (BattleDefinition)
 import Critters.State.BattleDefinition qualified as Definition
 import Critters.State.BattleOutcome (BattleOutcome (..))
@@ -35,98 +36,98 @@ import Data.Text qualified as Text
 
 beginBattle :: GameState -> Text -> Either Text Battle
 beginBattle state identifier =
-  maybe (Left "That battle is not defined.") (beginDefinition state) (Map.lookup identifier (Config.configBattles (combat state)))
+    maybe (Left "That battle is not defined.") (beginDefinition state) (Map.lookup identifier state.combat.battles)
 
 beginEncounter :: GameState -> EncounterEntry -> Either Text Battle
 beginEncounter state entry = do
-  species <- maybe (Left "That encounter species is not defined.") Right (Map.lookup (Entry.entrySpecies entry) (Config.configSpecies (combat state)))
-  let level = Entry.entryLevel entry
-      baseHealth = Map.findWithDefault (Map.findWithDefault 20 "health" (Species.unBaseStats (Species.speciesStats Species.defaultSpecies))) "health" (Species.unBaseStats (Species.speciesStats species))
-      hitPoints = max 1 $ Number.integer $ Common.evaluate (Number.number baseHealth) (Rules.rulesHealthFormula (Config.configRules (combat state))) [("base", Number.number baseHealth), ("level", Number.number level)]
-      displayName = if Text.null (Text.strip (Species.speciesName species)) then Entry.entrySpecies entry else Species.speciesName species
-      definition =
-        Definition.defaultDefinition
-          { Definition.definitionAllowCapture = Entry.entryAllowCapture entry,
-            Definition.definitionAllowEscape = Entry.entryAllowEscape entry,
-            Definition.definitionName = "Wild " <> displayName,
-            Definition.definitionOpponents = [Critter.basicCritter hitPoints level hitPoints (Entry.entrySpecies entry)]
-          }
-  beginDefinition state definition
+    species <- maybe (Left "That encounter species is not defined.") Right (Map.lookup entry.species state.combat.species)
+    let level = entry.level
+        baseHealth = Map.findWithDefault (Map.findWithDefault 20 "health" (((Species.defaultSpecies).stats).values)) "health" species.stats.values
+        hitPoints = max 1 $ Number.integer $ Common.evaluate (Number.number baseHealth) state.combat.rules.healthFormula [("base", Number.number baseHealth), ("level", Number.number level)]
+        displayName = if Text.null (Text.strip species.name) then entry.species else species.name
+        definition =
+            Definition.defaultDefinition
+                { Definition.allowCapture = entry.allowCapture
+                , Definition.allowEscape = entry.allowEscape
+                , Definition.name = "Wild " <> displayName
+                , Definition.opponents = [Critter.basicCritter hitPoints level hitPoints entry.species]
+                }
+    beginDefinition state definition
 
 beginDefinition :: GameState -> BattleDefinition -> Either Text Battle
 beginDefinition state definition
-  | isJust (battle state) = Left "A battle is already in progress."
-  | partyOpen state = Left "Close your party before starting a battle."
-  | otherwise = do
-      player <- maybe (Left "You need a conscious critter to battle.") Right (findIndex Common.usable (Party.members (party state)))
-      opponent <- maybe (Left "There are no conscious opponents.") Right (findIndex Common.usable (Definition.definitionOpponents definition))
-      if length (Definition.definitionOpponents definition) > maxPartySize state
-        then Left "Opposing party exceeds the game party limit."
-        else
-          if all (Common.validCritter (combat state)) (Party.members (party state) <> Definition.definitionOpponents definition)
-            then
-              Right
-                defaultBattle
-                  { battleActiveOpponent = opponent,
-                    battleActivePlayer = player,
-                    battleConfig = combat state,
-                    battleDefinition = definition,
-                    battleInitialSeed = Just (randomSeed state),
-                    battleMessages = [Definition.definitionName definition],
-                    battleOpponentParty = Definition.definitionOpponents definition,
-                    battleParticipants = [player],
-                    battlePhase = if null (Definition.definitionIntroduction definition) then ActionMenu else Introduction,
-                    battleRewardedOpponents = [index | (index, critter) <- zip [0 ..] (Definition.definitionOpponents definition), not (Common.usable critter)]
-                  }
-            else Left "A participant has an invalid species, move, status, resource count or level."
+    | isJust state.battle = Left "A battle is already in progress."
+    | state.partyOpen = Left "Close your party before starting a battle."
+    | otherwise = do
+        player <- maybe (Left "You need a conscious critter to battle.") Right (findIndex Common.usable state.party.members)
+        opponent <- maybe (Left "There are no conscious opponents.") Right (findIndex Common.usable definition.opponents)
+        if length definition.opponents > state.maxPartySize
+            then Left "Opposing party exceeds the game party limit."
+            else
+                if all (Common.validCritter state.combat) (state.party.members <> definition.opponents)
+                    then
+                        Right
+                            defaultBattle
+                                { Battle.activeOpponent = opponent
+                                , Battle.activePlayer = player
+                                , Battle.config = state.combat
+                                , Battle.definition = definition
+                                , Battle.initialSeed = Just state.randomSeed
+                                , Battle.messages = [definition.name]
+                                , Battle.opponentParty = definition.opponents
+                                , Battle.participants = [player]
+                                , Battle.phase = if null definition.introduction then ActionMenu else Introduction
+                                , Battle.rewardedOpponents = [index | (index, critter) <- zip [0 ..] definition.opponents, not (Common.usable critter)]
+                                }
+                    else Left "A participant has an invalid species, move, status, resource count or level."
 
 commandFor :: Input -> Maybe Command
 commandFor = \case
-  Input.Character 'h' -> Just (Select West)
-  Input.Character 'j' -> Just (Select South)
-  Input.Character 'k' -> Just (Select North)
-  Input.Character 'l' -> Just (Select East)
-  Input.Down -> Just (Select South)
-  Input.Enter -> Just ConfirmSelection
-  Input.Escape -> Just CloseMenu
-  Input.Left -> Just (Select West)
-  Input.Right -> Just (Select East)
-  Input.Up -> Just (Select North)
-  _ -> Nothing
+    Input.Character 'h' -> Just (Select West)
+    Input.Character 'j' -> Just (Select South)
+    Input.Character 'k' -> Just (Select North)
+    Input.Character 'l' -> Just (Select East)
+    Input.Down -> Just (Select South)
+    Input.Enter -> Just ConfirmSelection
+    Input.Escape -> Just CloseMenu
+    Input.Left -> Just (Select West)
+    Input.Right -> Just (Select East)
+    Input.Up -> Just (Select North)
+    _ -> Nothing
 
 completionEffects :: Battle -> [Effect]
-completionEffects active = case battleOutcome active of
-  Just Captured -> Definition.definitionCaptureEffects (battleDefinition active)
-  Just Defeat -> Definition.definitionDefeatEffects (battleDefinition active)
-  Just Escaped -> Definition.definitionEscapeEffects (battleDefinition active)
-  Just Victory -> Definition.definitionVictoryEffects (battleDefinition active)
-  Nothing -> []
+completionEffects active = case active.outcome of
+    Just Captured -> active.definition.captureEffects
+    Just Defeat -> active.definition.defeatEffects
+    Just Escaped -> active.definition.escapeEffects
+    Just Victory -> active.definition.victoryEffects
+    Nothing -> []
 
 eventsFor :: GameState -> Command -> [Event]
 eventsFor state command = case Common.contextFor state of
-  Nothing -> []
-  Just context | battlePhase (contextBattle context) == Introduction ->
-    case command of
-      ConfirmSelection
-        | battleIntroductionIndex (contextBattle context) + 1 < length (Definition.definitionIntroduction (battleDefinition (contextBattle context))) -> [Event.BattleIntroductionAdvanced (battleIntroductionIndex (contextBattle context) + 1)]
-        | otherwise -> [Event.BattleCombatantsSentOut]
-      _ -> []
-  Just context -> case command of
-    ActInBattle action -> Turn.resolveAction state action
-    CloseMenu | battlePhase active `notElem` [ActionMenu, Finished, ReplacementMenu] -> update context active{battlePhase = ActionMenu, battleSelected = 0, battleSelectedItem = Nothing}
-    ConfirmSelection -> case drop (battleSelected active) (Menu.entries state) of
-      (_, Menu.GoTo phase) : _ -> update context active{battlePhase = phase, battleSelected = 0}
-      (_, Menu.Perform (SwitchCritter index)) : _
-        | battlePhase active == SwitchMenu && index == battleActivePlayer active -> update context active{battlePhase = ActionMenu, battleSelected = 0}
-      (_, Menu.Perform action) : _ -> Turn.resolveAction state action
-      (_, Menu.PickItem identifier) : _ -> update context active{battlePhase = ItemTargetMenu, battleSelected = 0, battleSelectedItem = Just identifier}
-      _ -> []
-    Select direction -> update context active{battleSelected = Selection.moveSelection columns (length (Menu.entries state)) direction (battleSelected active)}
-    SelectNext -> select context 1
-    SelectPrevious -> select context (-1)
-    _ -> []
-    where
-      active = contextBattle context
-      columns = if battlePhase active `elem` [ItemTargetMenu, ReplacementMenu, SwitchMenu] then 1 else 2
-      select current delta = update current active{battleSelected = max 0 (min (length (Menu.entries state) - 1) (battleSelected active + delta))}
-      update current next = Common.changedEvents state current{contextBattle = next}
+    Nothing -> []
+    Just context | context.battle.phase == Introduction ->
+        case command of
+            ConfirmSelection
+                | context.battle.introductionIndex + 1 < length context.battle.definition.introduction -> [Event.BattleIntroductionAdvanced (context.battle.introductionIndex + 1)]
+                | otherwise -> [Event.BattleCombatantsSentOut]
+            _ -> []
+    Just context -> case command of
+        ActInBattle action -> Turn.resolveAction state action
+        CloseMenu | active.phase `notElem` [ActionMenu, Finished, ReplacementMenu] -> update context active{Battle.phase = ActionMenu, Battle.selected = 0, Battle.selectedItem = Nothing}
+        ConfirmSelection -> case drop active.selected (Menu.entries state) of
+            (_, Menu.GoTo phase) : _ -> update context active{Battle.phase = phase, Battle.selected = 0}
+            (_, Menu.Perform (SwitchCritter index)) : _
+                | active.phase == SwitchMenu && index == active.activePlayer -> update context active{Battle.phase = ActionMenu, Battle.selected = 0}
+            (_, Menu.Perform action) : _ -> Turn.resolveAction state action
+            (_, Menu.PickItem identifier) : _ -> update context active{Battle.phase = ItemTargetMenu, Battle.selected = 0, Battle.selectedItem = Just identifier}
+            _ -> []
+        Select direction -> update context active{Battle.selected = Selection.moveSelection columns (length (Menu.entries state)) direction active.selected}
+        SelectNext -> select context 1
+        SelectPrevious -> select context (-1)
+        _ -> []
+      where
+        active = context.battle
+        columns = if active.phase `elem` [ItemTargetMenu, ReplacementMenu, SwitchMenu] then 1 else 2
+        select current delta = update current active{Battle.selected = max 0 (min (length (Menu.entries state) - 1) (active.selected + delta))}
+        update current next = Common.changedEvents state current{Common.battle = next}

@@ -28,70 +28,70 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 
 data CombatConfig = CombatConfig
-  { configBattles :: Map Text BattleDefinition,
-    configEncounters :: [Encounter],
-    configItems :: Map Text Item,
-    configMoves :: Map MoveId Move,
-    configRules :: Rules,
-    configSpecies :: Map Text Species,
-    configStatuses :: Map Text StatusDefinition
-  }
-  deriving stock (Eq)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec CombatConfig)
+    { battles :: Map Text BattleDefinition
+    , encounters :: [Encounter]
+    , items :: Map Text Item
+    , moves :: Map MoveId Move
+    , rules :: Rules
+    , species :: Map Text Species
+    , statuses :: Map Text StatusDefinition
+    }
+    deriving stock (Eq)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec CombatConfig)
 
 defaultCombat :: CombatConfig
 defaultCombat =
-  CombatConfig
-    { configBattles = Map.empty,
-      configEncounters = [],
-      configItems = Map.empty,
-      configMoves = Map.empty,
-      configRules = defaultRules,
-      configSpecies = Map.empty,
-      configStatuses = Map.empty
-    }
+    CombatConfig
+        { battles = Map.empty
+        , encounters = []
+        , items = Map.empty
+        , moves = Map.empty
+        , rules = defaultRules
+        , species = Map.empty
+        , statuses = Map.empty
+        }
 
 instance HasCodec CombatConfig where
-  codec =
-    Codec.named "CombatConfig"
-      $ Codec.bimapCodec validate id
-      $ Codec.object "CombatConfig"
-      $ CombatConfig
-        <$> Codec.optionalFieldWithOmittedDefault "battles" (Map.empty) "Named, scripted or encounter battles." Codec..= configBattles
-        <*> Codec.optionalFieldWithOmittedDefault "encounters" ([]) "Encounter tables." Codec..= configEncounters
-        <*> Codec.optionalFieldWithOmittedDefault "items" (Map.empty) "Battle item definitions." Codec..= configItems
-        <*> Codec.optionalFieldWithOmittedDefault "moves" (Map.empty) "Move definitions." Codec..= configMoves
-        <*> Codec.optionalFieldWithOmittedDefault "rules" (defaultRules) "Game-defined combat and progression rules." Codec..= configRules
-        <*> Codec.optionalFieldWithOmittedDefault "species" (Map.empty) "Species stats, types and learnsets." Codec..= configSpecies
-        <*> Codec.optionalFieldWithOmittedDefault "statuses" (Map.empty) "Persistent status definitions." Codec..= configStatuses
-    where
-      validate value
-        | any (Text.null . Text.strip) (Map.keys (configBattles value) <> Map.keys (configItems value) <> Map.keys (configSpecies value) <> Map.keys (configStatuses value)) = Left "Combat identifiers must not be blank."
-        | any (\(MoveId identifier) -> Text.null (Text.strip identifier)) (Map.keys (configMoves value)) = Left "Move identifiers must not be blank."
-        | any (not . knownMove) (concatMap (concat . Map.elems . Species.speciesLearnset) (Map.elems (configSpecies value))) = Left "A species learnset references a missing move."
-        | any (not . validEffect) (Move.moveEffects (Rules.rulesFallbackMove (configRules value)) <> concatMap Move.moveEffects (Map.elems (configMoves value))) = Left "A move effect references an unknown status or invalid stat."
-        | any (not . validCritter) (concatMap Definition.definitionOpponents (Map.elems (configBattles value))) = Left "An opposing critter references an unknown species, move or status."
-        | any (not . validEncounterSpecies) encounterEntries = Left "An encounter references a missing species."
-        | any (not . validEncounterBattle) encounterEntries = Left "An encounter references a missing battle."
-        | any (not . validEncounterLevel) encounterEntries = Left "Encounter levels exceed the game level limit."
-        | any (not . (`Map.member` configStatuses value)) (Map.keys (Rules.rulesStatusCaptureBonuses (configRules value))) = Left "A capture bonus references a missing status."
-        | otherwise = Right value
-        where
-          knownMove identifier = Map.member identifier (configMoves value)
-          encounterEntries = concatMap Encounter.encounterEntries (configEncounters value)
-          validEncounterBattle = \case
-            Entry.EncounterEntry{} -> True
-            Entry.LegacyEncounterEntry{Entry.entryBattle} -> Map.member entryBattle (configBattles value)
-          validEncounterLevel = \case
-            Entry.EncounterEntry{Entry.entryLevel} -> entryLevel <= Rules.rulesMaxLevel (configRules value)
-            Entry.LegacyEncounterEntry{Entry.entryMaxLevel, Entry.entryMinLevel} -> all (maybe True (<= Rules.rulesMaxLevel (configRules value))) [entryMaxLevel, entryMinLevel]
-          validEncounterSpecies = \case
-            Entry.EncounterEntry{Entry.entrySpecies} -> Map.member entrySpecies (configSpecies value)
-            Entry.LegacyEncounterEntry{} -> True
-          validCritter critter = Map.member (Critter.species critter) (configSpecies value) && all knownMove (Profile.profileKnownMoves (Critter.battleProfile critter)) && maybe True (\affliction -> Map.member (Affliction.afflictionStatus affliction) (configStatuses value)) (Profile.profileStatus (Critter.battleProfile critter))
-          validEffect = \case
-            Chance _ effect -> validEffect effect
-            ChangeHealth _ formula -> either (const False) (all (`elem` ["damage", "hp", "maxHP", "level", "targetHP", "targetMaxHP"])) (Formula.variables formula)
-            ChangeStage _ stat _ -> not (Text.null (Text.strip stat))
-            ClearStatus _ -> True
-            InflictStatus _ identifier -> Map.member identifier (configStatuses value)
+    codec =
+        Codec.named "CombatConfig" $
+            Codec.bimapCodec validate id $
+                Codec.object "CombatConfig" $
+                    CombatConfig
+                        <$> Codec.optionalFieldWithOmittedDefault "battles" (Map.empty) "Named, scripted or encounter battles." Codec..= (.battles)
+                        <*> Codec.optionalFieldWithOmittedDefault "encounters" ([]) "Encounter tables." Codec..= (.encounters)
+                        <*> Codec.optionalFieldWithOmittedDefault "items" (Map.empty) "Battle item definitions." Codec..= (.items)
+                        <*> Codec.optionalFieldWithOmittedDefault "moves" (Map.empty) "Move definitions." Codec..= (.moves)
+                        <*> Codec.optionalFieldWithOmittedDefault "rules" (defaultRules) "Game-defined combat and progression rules." Codec..= (.rules)
+                        <*> Codec.optionalFieldWithOmittedDefault "species" (Map.empty) "Species stats, types and learnsets." Codec..= (.species)
+                        <*> Codec.optionalFieldWithOmittedDefault "statuses" (Map.empty) "Persistent status definitions." Codec..= (.statuses)
+      where
+        validate value
+            | any (Text.null . Text.strip) (Map.keys value.battles <> Map.keys value.items <> Map.keys value.species <> Map.keys value.statuses) = Left "Combat identifiers must not be blank."
+            | any (\(MoveId identifier) -> Text.null (Text.strip identifier)) (Map.keys value.moves) = Left "Move identifiers must not be blank."
+            | any (not . knownMove) (concatMap (concat . Map.elems . (.learnset)) (Map.elems value.species)) = Left "A species learnset references a missing move."
+            | any (not . validEffect) (value.rules.fallbackMove.effects <> concatMap (.effects) (Map.elems value.moves)) = Left "A move effect references an unknown status or invalid stat."
+            | any (not . validCritter) (concatMap (.opponents) (Map.elems value.battles)) = Left "An opposing critter references an unknown species, move or status."
+            | any (not . validEncounterSpecies) entries = Left "An encounter references a missing species."
+            | any (not . validEncounterBattle) entries = Left "An encounter references a missing battle."
+            | any (not . validEncounterLevel) entries = Left "Encounter levels exceed the game level limit."
+            | any (not . (`Map.member` value.statuses)) (Map.keys value.rules.statusCaptureBonuses) = Left "A capture bonus references a missing status."
+            | otherwise = Right value
+          where
+            knownMove identifier = Map.member identifier value.moves
+            entries = concatMap (.entries) value.encounters
+            validEncounterBattle = \case
+                Entry.EncounterEntry{} -> True
+                Entry.LegacyEncounterEntry{Entry.battle} -> Map.member battle value.battles
+            validEncounterLevel = \case
+                Entry.EncounterEntry{Entry.level} -> level <= value.rules.maxLevel
+                Entry.LegacyEncounterEntry{Entry.maxLevel, Entry.minLevel} -> all (maybe True (<= value.rules.maxLevel)) [maxLevel, minLevel]
+            validEncounterSpecies = \case
+                Entry.EncounterEntry{Entry.species} -> Map.member species value.species
+                Entry.LegacyEncounterEntry{} -> True
+            validCritter critter = Map.member critter.species value.species && all knownMove critter.battleProfile.knownMoves && maybe True (\affliction -> Map.member affliction.status value.statuses) critter.battleProfile.status
+            validEffect = \case
+                Chance _ effect -> validEffect effect
+                ChangeHealth _ formula -> either (const False) (all (`elem` ["damage", "hp", "maxHP", "level", "targetHP", "targetMaxHP"])) (Formula.variables formula)
+                ChangeStage _ stat _ -> not (Text.null (Text.strip stat))
+                ClearStatus _ -> True
+                InflictStatus _ identifier -> Map.member identifier value.statuses

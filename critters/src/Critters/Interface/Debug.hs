@@ -21,33 +21,33 @@ import Witch (from)
 
 input :: FilePath -> IO Input
 input logPath = do
-  TextIO.putStr "> "
-  hFlush stdout
-  isEOF >>= \case
-    True -> exitSuccess
-    False ->
-      Input.parse <$> TextIO.getLine >>= \case
-        Just userInput -> pure userInput
-        Nothing -> writeLog () logPath "Unrecognized input." >> input logPath
+    TextIO.putStr "> "
+    hFlush stdout
+    isEOF >>= \case
+        True -> exitSuccess
+        False ->
+            Input.parse <$> TextIO.getLine >>= \case
+                Just userInput -> pure userInput
+                Nothing -> writeLog () logPath "Unrecognized input." >> input logPath
 
 output :: () -> GameState -> IO ()
 output _ state = do
-  forM_ (BattleCommon.contextFor state) $ \context -> do
-    let active = BattleCommon.contextBattle context
-    TextIO.putStrLn ("Battle: " <> Definition.definitionName (Battle.battleDefinition active))
-    forM_ [BattleCommon.Enemy, BattleCommon.Player] $ \side ->
-      forM_ (BattleCommon.active side context) $ \critter -> TextIO.putStrLn (BattleCommon.displayName context critter <> " HP " <> from (show (Critter.hitPoints critter)) <> "/" <> from (show (Critter.maxHitPoints critter)))
-    mapM_ TextIO.putStrLn (Battle.battleMessages active)
-    forM_ (zip [0 ..] (BattleMenu.entries state)) $ \(index, (label, _)) -> TextIO.putStrLn ((if index == Battle.battleSelected active then "> " else "  ") <> label)
-  mapM_ TextIO.putStrLn (interactionText state <|> conversationText state)
-  forM_ (activeInteraction state) $ \active ->
-    case Active.activeSelectedChoice active of
-      Just selected ->
-        forM_ (zip [0 ..] (Interaction.interactionChoices (Active.activeScript active))) $ \(index, choice) ->
-          TextIO.putStrLn ((if index == selected then "> " else "  ") <> Choice.choiceLabel choice)
-      Nothing -> pure ()
+    forM_ (BattleCommon.contextFor state) $ \context -> do
+        let active = context.battle
+        TextIO.putStrLn ("Battle: " <> active.definition.name)
+        forM_ [BattleCommon.Enemy, BattleCommon.Player] $ \side ->
+            forM_ (BattleCommon.active side context) $ \critter -> TextIO.putStrLn (BattleCommon.displayName context critter <> " HP " <> from (show critter.hitPoints) <> "/" <> from (show critter.maxHitPoints))
+        mapM_ TextIO.putStrLn active.messages
+        forM_ (zip [0 ..] (BattleMenu.entries state)) $ \(index, (label, _)) -> TextIO.putStrLn ((if index == active.selected then "> " else "  ") <> label)
+    mapM_ TextIO.putStrLn (interactionText state <|> conversationText state)
+    forM_ state.activeInteraction $ \active ->
+        case active.selectedChoice of
+            Just selected ->
+                forM_ (zip [0 ..] active.script.choices) $ \(index, choice) ->
+                    TextIO.putStrLn ((if index == selected then "> " else "  ") <> choice.label)
+            Nothing -> pure ()
 
 writeLog :: () -> FilePath -> Text -> IO ()
 writeLog _ logPath message = do
-  TextIO.putStrLn message
-  TextIO.appendFile logPath (message <> "\n")
+    TextIO.putStrLn message
+    TextIO.appendFile logPath (message <> "\n")

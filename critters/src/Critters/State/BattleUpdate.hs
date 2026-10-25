@@ -9,19 +9,19 @@ import Data.Map.Strict (Map)
 import Data.Text (Text)
 
 data BattleUpdate = BattleUpdate
-  { updateBattle :: Battle,
-    updateInventory :: Maybe (Map Text Int),
-    updateParty :: Maybe Party,
-    updateSeed :: Maybe Int
-  }
-  deriving stock (Eq)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BattleUpdate)
+    { battle :: Battle
+    , inventory :: Maybe (Map Text Int)
+    , party :: Maybe Party
+    , seed :: Maybe Int
+    }
+    deriving stock (Eq)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BattleUpdate)
 
 instance HasCodec BattleUpdate where
-  codec =
-    Codec.object "BattleUpdate" $
-      BattleUpdate
-        <$> Codec.requiredField "battle" "Resolved battle state." Codec..= updateBattle
-        <*> Codec.optionalFieldOrNull "inventory" "Updated inventory, only when changed." Codec..= updateInventory
-        <*> Codec.optionalFieldOrNull "party" "Updated player party, only when changed." Codec..= updateParty
-        <*> Codec.optionalFieldOrNull "seed" "Advanced random seed, only when changed." Codec..= updateSeed
+    codec =
+        Codec.object "BattleUpdate" $
+            BattleUpdate
+                <$> Codec.requiredField "battle" "Resolved battle state." Codec..= (.battle)
+                <*> Codec.optionalFieldOrNull "inventory" "Updated inventory, only when changed." Codec..= (.inventory)
+                <*> Codec.optionalFieldOrNull "party" "Updated player party, only when changed." Codec..= (.party)
+                <*> Codec.optionalFieldOrNull "seed" "Advanced random seed, only when changed." Codec..= (.seed)

@@ -2,9 +2,8 @@
   description = "A very basic flake with a devShell";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    tilia.url = "github:mrkkrp/tilia";
   };
-  outputs = { nixpkgs, self, tilia, ... }:
+  outputs = { nixpkgs, self, ... }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -16,7 +15,7 @@
           ghcid
           haskell-language-server
           just
-          tilia.packages.${system}.default
+          haskellPackages.fourmolu
           pre-commit
         ];
       };

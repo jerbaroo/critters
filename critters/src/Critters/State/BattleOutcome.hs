@@ -6,8 +6,8 @@ import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty (..))
 
 data BattleOutcome = Captured | Defeat | Escaped | Victory
-  deriving stock (Eq)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BattleOutcome)
+    deriving stock (Eq)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BattleOutcome)
 
 instance HasCodec BattleOutcome where
-  codec = Codec.stringConstCodec ((Captured, "captured") :| [(Defeat, "defeat"), (Escaped, "escaped"), (Victory, "victory")])
+    codec = Codec.stringConstCodec ((Captured, "captured") :| [(Defeat, "defeat"), (Escaped, "escaped"), (Victory, "victory")])

@@ -1,6 +1,6 @@
 -- | Serializable game data, independent of game rules and rendering.
-module Critters.State
-  ( module Critters.State.ActiveInteraction,
+module Critters.State (
+    module Critters.State.ActiveInteraction,
     module Critters.State.Affliction,
     module Critters.State.Battle,
     module Critters.State.BattleDefinition,
@@ -38,7 +38,7 @@ module Critters.State
     module Critters.State.Tile,
     module Critters.State.Warp,
     module Critters.State.World,
-  )
+)
 where
 
 import Critters.State.ActiveInteraction (ActiveInteraction (..))

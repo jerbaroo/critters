@@ -11,13 +11,13 @@ empty = Party []
 
 -- | An ordered party. The game state configures the maximum number of members.
 newtype Party = Party
-  { members :: [Critter]
-  }
-  deriving stock (Eq)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Party)
+    { members :: [Critter]
+    }
+    deriving stock (Eq)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Party)
 
 instance HasCodec Party where
-  codec =
-    Codec.object "Party" $
-      Party
-        <$> Codec.optionalFieldWithOmittedDefault "members" [] "Critters in party order." Codec..= members
+    codec =
+        Codec.object "Party" $
+            Party
+                <$> Codec.optionalFieldWithOmittedDefault "members" [] "Critters in party order." Codec..= (.members)

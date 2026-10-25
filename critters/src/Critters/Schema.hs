@@ -15,26 +15,26 @@ gameSchema = hoistDefinitions (Schema.jsonSchemaViaCodec @GameState)
 -- | Autodocodec uses absolute references, so definitions must share the root.
 hoistDefinitions :: JSONSchema -> JSONSchema
 hoistDefinitions root =
-  let (schema, definitions) = State.runState (value root) Map.empty
-   in if Map.null definitions then schema else WithDefSchema definitions schema
+    let (schema, definitions) = State.runState (value root) Map.empty
+     in if Map.null definitions then schema else WithDefSchema definitions schema
   where
     object :: ObjectSchema -> State (Map Text JSONSchema) ObjectSchema
     object = \case
-      ObjectAllOfSchema schemas -> ObjectAllOfSchema <$> traverse object schemas
-      ObjectAnyOfSchema schemas -> ObjectAnyOfSchema <$> traverse object schemas
-      ObjectAnySchema -> pure ObjectAnySchema
-      ObjectKeySchema key requirement schema comment -> (\next -> ObjectKeySchema key requirement next comment) <$> value schema
-      ObjectOneOfSchema schemas -> ObjectOneOfSchema <$> traverse object schemas
+        ObjectAllOfSchema schemas -> ObjectAllOfSchema <$> traverse object schemas
+        ObjectAnyOfSchema schemas -> ObjectAnyOfSchema <$> traverse object schemas
+        ObjectAnySchema -> pure ObjectAnySchema
+        ObjectKeySchema key requirement schema comment -> (\next -> ObjectKeySchema key requirement next comment) <$> value schema
+        ObjectOneOfSchema schemas -> ObjectOneOfSchema <$> traverse object schemas
     value :: JSONSchema -> State (Map Text JSONSchema) JSONSchema
     value = \case
-      AnyOfSchema schemas -> AnyOfSchema <$> traverse value schemas
-      ArraySchema schema -> ArraySchema <$> value schema
-      CommentSchema comment schema -> CommentSchema comment <$> value schema
-      MapSchema schema -> MapSchema <$> value schema
-      ObjectSchema schema -> ObjectSchema <$> object schema
-      OneOfSchema schemas -> OneOfSchema <$> traverse value schemas
-      WithDefSchema definitions schema -> do
-        lifted <- traverse value definitions
-        State.modify' (Map.union lifted)
-        value schema
-      schema -> pure schema
+        AnyOfSchema schemas -> AnyOfSchema <$> traverse value schemas
+        ArraySchema schema -> ArraySchema <$> value schema
+        CommentSchema comment schema -> CommentSchema comment <$> value schema
+        MapSchema schema -> MapSchema <$> value schema
+        ObjectSchema schema -> ObjectSchema <$> object schema
+        OneOfSchema schemas -> OneOfSchema <$> traverse value schemas
+        WithDefSchema definitions schema -> do
+            lifted <- traverse value definitions
+            State.modify' (Map.union lifted)
+            value schema
+        schema -> pure schema

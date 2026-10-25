@@ -6,8 +6,8 @@ import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty (..))
 
 data BattlePhase = ActionMenu | Finished | Introduction | ItemMenu | ItemTargetMenu | MoveMenu | ReplacementMenu | SwitchMenu
-  deriving stock (Eq)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BattlePhase)
+    deriving stock (Eq)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BattlePhase)
 
 instance HasCodec BattlePhase where
-  codec = Codec.stringConstCodec ((ActionMenu, "actions") :| [(Finished, "finished"), (Introduction, "introduction"), (ItemMenu, "items"), (ItemTargetMenu, "item-target"), (MoveMenu, "moves"), (ReplacementMenu, "replacement"), (SwitchMenu, "switch")])
+    codec = Codec.stringConstCodec ((ActionMenu, "actions") :| [(Finished, "finished"), (Introduction, "introduction"), (ItemMenu, "items"), (ItemTargetMenu, "item-target"), (MoveMenu, "moves"), (ReplacementMenu, "replacement"), (SwitchMenu, "switch")])

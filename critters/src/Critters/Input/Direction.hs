@@ -7,19 +7,19 @@ import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty (..))
 
 data Direction
-  = East
-  | North
-  | South
-  | West
-  deriving stock (Eq)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Direction)
+    = East
+    | North
+    | South
+    | West
+    deriving stock (Eq)
+    deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec Direction)
 
 instance HasCodec Direction where
-  codec = Codec.stringConstCodec $ (East, "east") :| [(North, "north"), (South, "south"), (West, "west")]
+    codec = Codec.stringConstCodec $ (East, "east") :| [(North, "north"), (South, "south"), (West, "west")]
 
 instance Pretty Direction where
-  pretty = \case
-    East -> "East"
-    North -> "North"
-    South -> "South"
-    West -> "West"
+    pretty = \case
+        East -> "East"
+        North -> "North"
+        South -> "South"
+        West -> "West"

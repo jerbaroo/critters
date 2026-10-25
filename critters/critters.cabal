@@ -54,8 +54,10 @@ common settings
     default-extensions:
         DerivingStrategies
         DerivingVia
+        DuplicateRecordFields
         ImportQualifiedPost
         LambdaCase
+        NoFieldSelectors
         OverloadedRecordDot
         OverloadedStrings
         TypeApplications
