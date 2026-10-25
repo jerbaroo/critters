@@ -340,7 +340,7 @@ tuiTests =
         let (finished, _) = play permitted [Input.Enter, Input.Enter]
          in assertBool "Expected the object before pickup and ground after pickup" $
               Text.isInfixOf "🔴" (TUI.render permitted) && not (Text.isInfixOf "🔴" (TUI.render finished)),
-      testCase "Show the question, selected choice, controls and selection changes" $
+      testCase "Show the question and selection changes without a controls footer" $
         let (opened, _) = Engine.step permitted Input.Enter
             (selected, _) = Engine.step opened Input.Down
             frame = TUI.renderFrame opened
@@ -349,7 +349,7 @@ tuiTests =
                 && all ((== TUI.width * 2) . sum . map Cell.columns) frame
                 && map Text.stripEnd (take 4 (rows opened)) == ["Take this critter?", "", "> Yes", "  No"]
                 && map Text.stripEnd (take 4 (rows selected)) == ["Take this critter?", "", "  Yes", "> No"]
-                && Text.isInfixOf "Enter: Confirm" (TUI.render opened),
+                && all Text.null (map Text.strip (drop 4 (rows opened))),
       testCase "Show scripted dialogue over the world and restore it on cancellation" $
         let (opened, _) = Engine.step scene Input.Enter
             (closed, _) = Engine.step opened Input.Escape

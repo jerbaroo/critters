@@ -60,7 +60,7 @@ run = do
   configuration <- Options.execParser CLI.options
   let gameFile = CLIOptions.gameFile configuration
       saveName = CLIOptions.saveName configuration
-      saveFile = gameFile <> "_" <> from saveName
+      saveFile = gameFile <> "_save_" <> from saveName
       logPath = saveFile <> "_logs"
   state <- loadGameState gameFile
   history <- loadHistory saveFile

@@ -97,8 +97,7 @@ renderBattle state = case BattleCommon.contextFor state of
 
 renderChoices :: ActiveInteraction -> [[Cell]]
 renderChoices active =
-  renderText (height - 1) (Text.intercalate "\n" (question : "" : entries))
-    <> renderText 1 "↑/↓ or j/k: Select  Enter: Confirm  Esc: Cancel"
+  renderText height (Text.intercalate "\n" (question : "" : entries))
   where
     entries =
       [ (if activeSelectedChoice active == Just index then "> " else "  ") <> Choice.choiceLabel choice
