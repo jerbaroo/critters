@@ -15,7 +15,6 @@ import Data.Map.Strict qualified as Map
 accuracyFor :: Context -> Side -> Move -> Double
 accuracyFor context side move =
     Common.evaluate
-        0
         ((Common.rulesFor context).accuracyFormula)
         [ ("accuracy", move.accuracy)
         , ("accuracyStage", Common.stageFactor context side "accuracy")
@@ -31,7 +30,6 @@ damageFor context side move critical variance
         max rules.minimumDamage $
             integer $
                 Common.evaluate
-                    0
                     rules.damageFormula
                     [ ("affinity", typeMultiplier)
                     , ("attack", attack)

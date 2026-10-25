@@ -23,7 +23,7 @@ import Data.Maybe (fromMaybe)
 import Witch (from)
 
 experienceAt :: Rules -> Int -> Int
-experienceAt rules level = max 0 (integer (Common.evaluate 0 rules.experienceFormula [("level", number level)]))
+experienceAt rules level = max 0 (integer (Common.evaluate rules.experienceFormula [("level", number level)]))
 
 gain :: Int -> Int -> State Context ()
 gain index amount = when (amount > 0) $ do
@@ -51,7 +51,7 @@ learn context critter newLevel
     current = context.battle
     definition = Map.findWithDefault Species.defaultSpecies critter.species current.config.species
     learned = concatMap snd (filter (\(level, _) -> level > critter.level && level <= newLevel) (Map.toAscList definition.learnset))
-    maximumHP = max 1 (integer (Common.evaluate (number critter.maxHitPoints) ((Common.rulesFor context).healthFormula) [("base", number (Map.findWithDefault critter.maxHitPoints "health" definition.stats.values)), ("level", number newLevel)]))
+    maximumHP = max 1 (integer (Common.evaluate ((Common.rulesFor context).healthFormula) [("base", number (Map.findWithDefault critter.maxHitPoints "health" definition.stats.values)), ("level", number newLevel)]))
     updated =
         critter
             { Critter.battleProfile = critter.battleProfile{Profile.knownMoves = nub (Common.knownMoves current critter <> learned)}
@@ -73,5 +73,5 @@ rewardDefeated = do
                     (\slot -> rules.experienceForFainted || maybe False Common.usable (case drop slot (Common.allCritters Player current) of critter : _ -> Just critter; [] -> Nothing))
                     (if rules.experienceSharing == "party" then [0 .. length current.party.members - 1] else current.battle.participants)
             yield = fromMaybe 0 ((.experienceYield) <$> Map.lookup defeated.species current.battle.config.species)
-            amount = max 0 (integer (Common.evaluate 0 rules.experienceRewardFormula [("level", number defeated.level), ("participants", number (length participants)), ("yield", number yield)]))
+            amount = max 0 (integer (Common.evaluate rules.experienceRewardFormula [("level", number defeated.level), ("participants", number (length participants)), ("yield", number yield)]))
         when (not captured || rules.captureGivesExperience) (mapM_ (\slot -> gain slot amount) participants)

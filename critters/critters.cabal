@@ -77,6 +77,7 @@ library
         Critters.Battle.Engine
         Critters.Battle.Items
         Critters.Battle.Menu
+        Critters.Battle.Message
         Critters.Battle.Opponent
         Critters.Battle.Progression
         Critters.Battle.Status
@@ -87,7 +88,7 @@ library
         Critters.Command
         Critters.Engine
         Critters.Event
-        Critters.Formula
+        Critters.Expression
         Critters.Input
         Critters.Input.Direction
         Critters.Interface
@@ -102,6 +103,7 @@ library
         Critters.Save
         Critters.Schema
         Critters.Selection
+        Critters.Stage
         Critters.State
         Critters.State.ActiveInteraction
         Critters.State.Affliction
@@ -137,6 +139,8 @@ library
         Critters.State.Position
         Critters.State.Rules
         Critters.State.Species
+        Critters.State.Stage
+        Critters.State.StatName
         Critters.State.StatusDefinition
         Critters.State.Tile
         Critters.State.Warp
@@ -209,12 +213,15 @@ test-suite critters-test
     -- Modules included in this executable, other than Main.
     other-modules:
         BattleEventTests
+        BattleMessageTests
         BattlePersistenceTests
         BattleTests
+        ExpressionTests
         InteractionTests
         PlaybackTests
         SceneTests
         SchemaTests
+        StageTests
         TurnEventTests
 
     -- The interface type and version of the test suite.

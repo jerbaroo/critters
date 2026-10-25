@@ -27,6 +27,7 @@ import Critters.State.GameState (GameState)
 import Critters.State.Move qualified as Move
 import Critters.State.MoveId (MoveId)
 import Critters.State.Rules qualified as Rules
+import Critters.State.Stage (StageValues (..))
 import Data.List (findIndex, nub)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
@@ -78,7 +79,7 @@ performMove side identifier = do
     criticalRoll move = do
         context <- State.get
         let level participant = maybe 1 (number . (.level)) (Common.active participant context)
-            probability = Common.evaluate 0 ((Common.rulesFor context).criticalFormula) [("criticalRate", move.criticalRate), ("speed", Common.stat context side ((Common.rulesFor context).speedStat)), ("level", level side), ("targetLevel", level (Common.opposite side))]
+            probability = Common.evaluate ((Common.rulesFor context).criticalFormula) [("criticalRate", move.criticalRate), ("speed", Common.stat context side ((Common.rulesFor context).speedStat)), ("level", level side), ("targetLevel", level (Common.opposite side))]
         Common.chance probability
     strike move remaining sharedCritical firstHit
         | remaining <= 0 = pure 0
@@ -92,7 +93,7 @@ performMove side identifier = do
                         else do
                             critical <- if (Common.rulesFor context).criticalPerHit then criticalRoll move else pure sharedCritical
                             let rules = Common.rulesFor context
-                                multiplier = if critical then max 0 (Common.evaluate 1 rules.criticalMultiplierFormula [("level", maybe 1 (number . (.level)) (Common.active side context)), ("targetLevel", number defender.level)]) else 1
+                                multiplier = if critical then max 0 (Common.evaluate rules.criticalMultiplierFormula [("level", maybe 1 (number . (.level)) (Common.active side context)), ("targetLevel", number defender.level)]) else 1
                             variance <- if rules.randomDamageMin == rules.randomDamageMax then pure rules.randomDamageMin else (\roll -> rules.randomDamageMin + roll * (rules.randomDamageMax - rules.randomDamageMin)) <$> Common.randomUnit
                             let amount = min defender.hitPoints (damageFor context side move multiplier variance)
                             Common.modifyActive (Common.opposite side) (\critter -> critter{Critter.hitPoints = max 0 (critter.hitPoints - amount)})
@@ -188,8 +189,8 @@ switch side index = do
     mapM_ (\critter -> Common.emit (critter.species <> " entered the battle.")) (Common.active side context)
   where
     update reset current
-        | side == Player = current{Battle.activePlayer = index, Battle.participants = nub (current.participants <> [index]), Battle.phase = ActionMenu, Battle.playerStages = if reset then Map.empty else current.playerStages}
-        | otherwise = current{Battle.activeOpponent = index, Battle.participants = [current.activePlayer], Battle.enemyStages = if reset then Map.empty else current.enemyStages}
+        | side == Player = current{Battle.activePlayer = index, Battle.participants = nub (current.participants <> [index]), Battle.phase = ActionMenu, Battle.playerStages = if reset then StageValues Map.empty else current.playerStages}
+        | otherwise = current{Battle.activeOpponent = index, Battle.participants = [current.activePlayer], Battle.enemyStages = if reset then StageValues Map.empty else current.enemyStages}
 
 updateBetween :: Context -> Context -> BattleUpdate
 updateBetween before after =

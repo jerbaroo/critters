@@ -3,7 +3,8 @@ module Critters.State.MoveEffect (MoveEffect (..), Target (..)) where
 import Autodocodec (Autodocodec (..), HasCodec, JSONObjectCodec)
 import Autodocodec qualified as Codec
 import Critters.Codec qualified as NumberCodec
-import Critters.Formula (Formula)
+import Critters.Expression (Expression)
+import Critters.State.StatName (StatName)
 import Data.Aeson qualified as Aeson
 import Data.HashMap.Strict qualified as HashMap
 import Data.List.NonEmpty (NonEmpty (..))
@@ -11,8 +12,8 @@ import Data.Text (Text)
 
 data MoveEffect
     = Chance Double MoveEffect
-    | ChangeHealth Target Formula
-    | ChangeStage Target Text Int
+    | ChangeHealth Target Expression
+    | ChangeStage Target StatName Int
     | ClearStatus Target
     | InflictStatus Target Text
     deriving stock (Eq)
@@ -43,9 +44,9 @@ instance HasCodec MoveEffect where
             ChangeStage destination stat amount -> ("change-stage", Codec.mapToEncoder (destination, stat, amount) stage)
             ClearStatus destination -> ("clear-status", Codec.mapToEncoder destination target)
             InflictStatus destination identifier -> ("inflict-status", Codec.mapToEncoder (destination, identifier) status)
-        health :: JSONObjectCodec (Target, Formula)
+        health :: JSONObjectCodec (Target, Expression)
         health = (,) <$> target Codec..= fst <*> Codec.requiredField "amount" "Signed HP change; supports damage, hp and maxHP variables." Codec..= snd
-        stage :: JSONObjectCodec (Target, Text, Int)
+        stage :: JSONObjectCodec (Target, StatName, Int)
         stage = (,,) <$> target Codec..= (\(value, _, _) -> value) <*> Codec.requiredField "stat" "The stat identifier." Codec..= (\(_, value, _) -> value) <*> Codec.requiredField "amount" "The stage change." Codec..= (\(_, _, value) -> value)
         status :: JSONObjectCodec (Target, Text)
         status = (,) <$> target Codec..= fst <*> Codec.requiredField "status" "The status identifier." Codec..= snd

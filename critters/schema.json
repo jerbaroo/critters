@@ -232,6 +232,13 @@
           },
           "type": "object"
         },
+        "messages": {
+          "$comment": "Game-defined battle message templates with expression placeholders.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "moves": {
           "$comment": "Move definitions.",
           "additionalProperties": {
@@ -323,10 +330,6 @@
             "accuracyPerHit": {
               "$comment": "Roll accuracy for each hit rather than once per move.",
               "type": "boolean"
-            },
-            "accuracyStageFormula": {
-              "$comment": "Accuracy and evasion stage multiplier.",
-              "type": "string"
             },
             "aiScoreFormula": {
               "$comment": "Score used by the strongest opponent policy.",
@@ -523,16 +526,6 @@
               "$comment": "Stat used to order actions.",
               "type": "string"
             },
-            "stageLimit": {
-              "$comment": "Absolute limit on temporary stat stages.",
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
-            },
-            "stageMultiplierFormula": {
-              "$comment": "Temporary stat multiplier.",
-              "type": "string"
-            },
             "statFormula": {
               "$comment": "Combat stat calculated from its base value and level.",
               "type": "string"
@@ -617,6 +610,37 @@
               }
             },
             "type": "object"
+          },
+          "type": "object"
+        },
+        "stages": {
+          "$comment": "Game-defined temporary stage limits and multipliers, keyed by stat name.",
+          "additionalProperties": {
+            "$comment": "StageDefinition",
+            "properties": {
+              "limit": {
+                "$comment": "Absolute limit on this temporary stage, from zero through 100.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "multiplier": {
+                "$comment": "Stat multiplier expression with the stage placeholder.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "multiplier",
+              "limit"
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "statNames": {
+          "$comment": "Display labels keyed by stat name.",
+          "additionalProperties": {
+            "type": "string"
           },
           "type": "object"
         },

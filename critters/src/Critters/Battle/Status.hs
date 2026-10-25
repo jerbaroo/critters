@@ -5,6 +5,7 @@ import Control.Monad.Trans.State.Strict (State)
 import Control.Monad.Trans.State.Strict qualified as State
 import Critters.Battle.Common (Context (..), Side (..))
 import Critters.Battle.Common qualified as Common
+import Critters.Battle.Message qualified as Message
 import Critters.Number (integer, number)
 import Critters.State.Affliction (Affliction (..))
 import Critters.State.Affliction qualified as Affliction
@@ -49,13 +50,13 @@ applyEffect actor damage effect = do
     case effect of
         Chance probability nested -> Common.chance probability >>= \applies -> when applies (applyEffect actor damage nested)
         ChangeHealth target formula -> forM_ (Common.active (destination target) context) $ \critter -> when (Common.usable critter) $ do
-            let amount = integer (Common.evaluate 0 formula [("damage", number damage), ("hp", number critter.hitPoints), ("maxHP", number critter.maxHitPoints), ("level", maybe 1 (number . (.level)) (Common.active actor context)), ("targetHP", number critter.hitPoints), ("targetMaxHP", number critter.maxHitPoints)])
+            let amount = integer (Common.evaluate formula [("damage", number damage), ("hp", number critter.hitPoints), ("maxHP", number critter.maxHitPoints), ("level", maybe 1 (number . (.level)) (Common.active actor context)), ("targetHP", number critter.hitPoints), ("targetMaxHP", number critter.maxHitPoints)])
                 next = max 0 (min critter.maxHitPoints (integer (number critter.hitPoints + number amount)))
             Common.modifyActive (destination target) (\value -> value{Critter.hitPoints = next})
             when (next /= critter.hitPoints) (Common.emit (critter.species <> " HP changed by " <> from (show (next - critter.hitPoints)) <> "."))
-        ChangeStage target identifier amount -> when (maybe False Common.usable (Common.active (destination target) context)) $ do
-            State.modify (Common.setStage (destination target) identifier amount)
-            Common.emit (identifier <> " stage changed.")
+        ChangeStage target identifier amount -> forM_ (Common.active (destination target) context) $ \critter -> when (Common.usable critter) $ do
+            change <- State.state (Common.setStage (destination target) identifier amount)
+            Common.emit (Message.renderStageChange context.battle.config (destination target) critter.species change)
         ClearStatus target -> do
             Common.modifyActive (destination target) (\value -> value{Critter.battleProfile = value.battleProfile{Profile.status = Nothing}})
             Common.emit "Status cleared."

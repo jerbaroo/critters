@@ -6,7 +6,7 @@ import Critters.Battle.Action (Action (..))
 import Critters.Battle.Turn qualified as Turn
 import Critters.Engine qualified as Engine
 import Critters.Event (Event)
-import Critters.Formula (Formula (..))
+import Critters.Expression (Expression (..))
 import Critters.Input qualified as Input
 import Critters.Save qualified as Save
 import Critters.State.Battle (Battle (..))
@@ -40,11 +40,11 @@ tests =
     testGroup
         "Battle persistence"
         [ testCase "Resume random turns using captured rules and random state" $ do
-            let configured = fixture{GameState.randomSeed = 73, GameState.combat = fixture.combat{CombatConfig.rules = fixture.combat.rules{Rules.damageFormula = Formula "floor(power * variance)", Rules.randomDamageMin = 0.85}}}
+            let configured = fixture{GameState.randomSeed = 73, GameState.combat = fixture.combat{CombatConfig.rules = fixture.combat.rules{Rules.damageFormula = Expression "floor(power * variance)", Rules.randomDamageMin = 0.85}}}
                 opened = Save.apply configured (entry configured)
                 history = entry configured <> Turn.resolveAction opened (UseMove (MoveId "strike"))
                 midway = Save.apply configured history
-                edited = configured{GameState.randomSeed = 999, GameState.combat = configured.combat{CombatConfig.rules = configured.combat.rules{Rules.damageFormula = Formula "999"}}}
+                edited = configured{GameState.randomSeed = 999, GameState.combat = configured.combat{CombatConfig.rules = configured.combat.rules{Rules.damageFormula = Expression "999"}}}
             withHistory history $ \loaded -> do
                 let resumed = Save.apply edited loaded
                 assertBool "Expected the active battle and seed to survive game-file edits" (resumed.battle == midway.battle && resumed.party == midway.party && resumed.randomSeed == midway.randomSeed)
@@ -57,7 +57,7 @@ tests =
             withHistory history $ \loaded ->
                 assertBool "Expected an unsampled seed to replay independently of the game file" (Save.apply configured{GameState.randomSeed = 999} loaded == expected)
         , testCase "Capture and acknowledge outcome rewards exactly once across reloads" $ do
-            let configured = fixture{GameState.inventory = Map.singleton "capsule" 1, GameState.combat = fixture.combat{CombatConfig.items = Map.singleton "capsule" defaultItem{Item.captureBonus = 1}, CombatConfig.rules = fixture.combat.rules{Rules.captureFormula = Formula "1"}, CombatConfig.battles = Map.adjust (\definition -> definition{BattleDefinition.allowCapture = True, BattleDefinition.captureEffects = [GiveItem "capsule" 2, SetFlag (FlagId "caught") True]}) "practice" fixture.combat.battles}}
+            let configured = fixture{GameState.inventory = Map.singleton "capsule" 1, GameState.combat = fixture.combat{CombatConfig.items = Map.singleton "capsule" defaultItem{Item.captureBonus = 1}, CombatConfig.rules = fixture.combat.rules{Rules.captureFormula = Expression "1"}, CombatConfig.battles = Map.adjust (\definition -> definition{BattleDefinition.allowCapture = True, BattleDefinition.captureEffects = [GiveItem "capsule" 2, SetFlag (FlagId "caught") True]}) "practice" fixture.combat.battles}}
                 opened = Save.apply configured (entry configured)
                 history = entry configured <> Turn.resolveAction opened (UseItem "capsule" (-1))
             withHistory history $ \loaded -> do

@@ -29,7 +29,6 @@ escape = do
     let rules = Common.rulesFor context
         probability =
             Common.evaluate
-                0
                 rules.escapeFormula
                 [ ("attempts", number context.battle.escapeAttempts)
                 , ("enemyLevel", maybe 1 (number . (.level)) (Common.active Enemy context))
@@ -89,7 +88,6 @@ useItem identifier target = do
                     bonus = maybe 1 (\affliction -> Map.findWithDefault 1 affliction.status ((Common.rulesFor context).statusCaptureBonuses)) critter.battleProfile.status
                     probability =
                         Common.evaluate
-                            0
                             ((Common.rulesFor context).captureFormula)
                             [ ("hp", number critter.hitPoints)
                             , ("itemBonus", item.captureBonus)

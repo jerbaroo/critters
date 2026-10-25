@@ -3,7 +3,9 @@ module Critters.State.Move (defaultMove, Move (..)) where
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
 import Critters.Codec qualified as NumberCodec
+import Critters.Pretty (pretty)
 import Critters.State.MoveEffect (MoveEffect)
+import Critters.State.StatName (StatName)
 import Data.Aeson qualified as Aeson
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -16,9 +18,9 @@ defaultMove = Move 1 "normal" "attack" 0 "defense" [] Map.empty 1 0 1 "Basic str
 data Move = Move
     { accuracy :: Double
     , affinity :: Text
-    , attackStat :: Text
+    , attackStat :: StatName
     , criticalRate :: Double
-    , defenseStat :: Text
+    , defenseStat :: StatName
     , effects :: [MoveEffect]
     , hitWeights :: Map Int Int
     , maxHits :: Int
@@ -56,5 +58,5 @@ instance HasCodec Move where
             | value.minHits < 1 || value.maxHits < value.minHits || value.maxHits > 100 = Left "Hit counts must satisfy 1 <= minHits <= maxHits <= 100."
             | any (\count -> count < value.minHits || count > value.maxHits) (Map.keys value.hitWeights) || any (< 1) (Map.elems value.hitWeights) = Left "Hit weights must be positive and within the configured hit range."
             | value.maxUses < 0 || value.power < 0 = Left "Move power and uses must not be negative."
-            | any (Text.null . Text.strip) [value.name, value.affinity, value.attackStat, value.defenseStat] = Left "Move names and identifiers must not be blank."
+            | any (Text.null . Text.strip) [value.name, value.affinity, pretty value.attackStat, pretty value.defenseStat] = Left "Move names and identifiers must not be blank."
             | otherwise = Right value

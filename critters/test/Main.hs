@@ -1,6 +1,7 @@
 module Main (main) where
 
 import BattleEventTests qualified as BattleEventTests
+import BattleMessageTests qualified as BattleMessageTests
 import BattlePersistenceTests qualified as BattlePersistenceTests
 import BattleTests qualified as BattleTests
 import Control.Exception (bracket)
@@ -25,10 +26,12 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as TextEncoding
 import Data.Text.IO qualified as TextIO
+import ExpressionTests qualified as ExpressionTests
 import InteractionTests qualified as InteractionTests
 import PlaybackTests qualified as PlaybackTests
 import SceneTests qualified as SceneTests
 import SchemaTests qualified as SchemaTests
+import StageTests qualified as StageTests
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (hClose, openTempFile)
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -823,7 +826,7 @@ stateTests =
     state = gameState (Position 2 1) (filledWorld [[Ground, Wall], [Water, TallGrass]])
 
 tests :: TestTree
-tests = testGroup "Critters" [BattleEventTests.tests, BattlePersistenceTests.tests, BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, PlaybackTests.tests, saveTests, SceneTests.tests, SchemaTests.tests, stateTests, TurnEventTests.tests, tuiTests, warpTests]
+tests = testGroup "Critters" [BattleEventTests.tests, BattleMessageTests.tests, BattlePersistenceTests.tests, BattleTests.tests, conditionTests, conversationTests, critterTests, engineTests, eventTests, ExpressionTests.tests, inputTests, InteractionTests.tests, partyRenderTests, partyTests, partyViewTests, PlaybackTests.tests, saveTests, SceneTests.tests, SchemaTests.tests, StageTests.tests, stateTests, TurnEventTests.tests, tuiTests, warpTests]
 
 tuiTests :: TestTree
 tuiTests =

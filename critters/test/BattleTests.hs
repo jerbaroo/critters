@@ -9,8 +9,8 @@ import Critters.Battle.Turn qualified as Turn
 import Critters.Command qualified as Command
 import Critters.Engine qualified as Engine
 import Critters.Event qualified as Event
-import Critters.Formula (Formula (..))
-import Critters.Formula qualified as Formula
+import Critters.Expression (Expression (..))
+import Critters.Expression qualified as Expression
 import Critters.Input qualified as Input
 import Critters.Input.Direction (Direction (East))
 import Critters.Interface.TUI qualified as TUI
@@ -56,6 +56,7 @@ import Critters.State.Rules (Rules (..), defaultRules)
 import Critters.State.Rules qualified as Rules
 import Critters.State.Species (BaseStats (..), Species (..), defaultSpecies)
 import Critters.State.Species qualified as Species
+import Critters.State.Stage (StageDefinition (..), StageDefinitions (..), StageValues (..))
 import Critters.State.StatusDefinition (defaultStatus)
 import Critters.State.StatusDefinition qualified as StatusDefinition
 import Critters.State.Tile (Tile (Ground))
@@ -167,9 +168,27 @@ fixture =
             defaultCombat
                 { CombatConfig.battles = Map.singleton "practice" defaultDefinition{BattleDefinition.opponents = [basicCritter 10 2 10 "stonekin"]}
                 , CombatConfig.items = Map.singleton "tonic" defaultItem{Item.healing = 5}
+                , CombatConfig.messages =
+                    Map.fromList
+                        [ ("stageEnemySubject", "Opposing {species}")
+                        , ("stageFell", "{subject}'s {stat} fell by {amount} {if(amount == 1, stageSingular, stagePlural)} ({beforeStage} → {afterStage}).")
+                        , ("stageMaximum", "{subject}'s {stat} cannot go any higher.")
+                        , ("stageMinimum", "{subject}'s {stat} cannot go any lower.")
+                        , ("stagePlayerSubject", "Your {species}")
+                        , ("stagePlural", "stages")
+                        , ("stageRose", "{subject}'s {stat} rose by {amount} {if(amount == 1, stageSingular, stagePlural)} ({beforeStage} → {afterStage}).")
+                        , ("stageSingular", "stage")
+                        , ("stageUnchanged", "{subject}'s {stat} stayed unchanged ({afterStage}).")
+                        ]
                 , CombatConfig.moves = Map.singleton (MoveId "strike") defaultMove{Move.maxUses = 5, Move.power = 5}
-                , CombatConfig.rules = defaultRules{Rules.damageFormula = Formula "power"}
+                , CombatConfig.rules = defaultRules{Rules.damageFormula = Expression "power"}
                 , CombatConfig.species = Map.fromList [("leafling", definition), ("stonekin", definition)]
+                , CombatConfig.stages =
+                    StageDefinitions $
+                        Map.fromList $
+                            [(name, StageDefinition 6 (Expression "if(stage >= 0, (2 + stage) / 2, 2 / (2 - stage))")) | name <- ["attack", "defense", "speed"]]
+                                <> [(name, StageDefinition 6 (Expression "if(stage >= 0, (3 + stage) / 3, 3 / (3 - stage))")) | name <- ["accuracy", "evasion"]]
+                , CombatConfig.statNames = Map.fromList [("accuracy", "Accuracy"), ("attack", "Attack"), ("defense", "Defence"), ("evasion", "Evasion"), ("speed", "Speed")]
                 }
         , GameState.party = Party [basicCritter 20 2 20 "leafling"]
         }
@@ -200,18 +219,18 @@ itemTests =
             assertBool "Expected full-party rejection without consuming the item" (unchanged.party == full.party && unchanged.inventory == full.inventory && fmap (.turn) unchanged.battle == Just 0)
             assertBool "Expected capture permissions to be enforced" (denied.party == forbidden.party && denied.inventory == forbidden.inventory)
         , testCase "Failed captures consume the item and permit retaliation" $
-            let opened = start capturable{GameState.combat = capturable.combat{CombatConfig.rules = capturable.combat.rules{Rules.captureFormula = Formula "0"}}}
+            let opened = start capturable{GameState.combat = capturable.combat{CombatConfig.rules = capturable.combat.rules{Rules.captureFormula = Expression "0"}}}
                 result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseItem "capsule" (-1)))
              in assertBool "Expected the failed attempt to spend a turn" (map (.hitPoints) result.party.members == [15] && result.inventory == Map.singleton "capsule" 0 && fmap (.outcome) result.battle == Just Nothing)
         , testCase "Escape uses the configured formula and previous failures" $
-            let configured = fixture{GameState.combat = fixture.combat{CombatConfig.battles = Map.adjust (\definition -> definition{BattleDefinition.allowEscape = True}) "practice" fixture.combat.battles, CombatConfig.rules = fixture.combat.rules{Rules.escapeFormula = Formula "if(attempts >= 1, 1, 0)"}}}
+            let configured = fixture{GameState.combat = fixture.combat{CombatConfig.battles = Map.adjust (\definition -> definition{BattleDefinition.allowEscape = True}) "practice" fixture.combat.battles, CombatConfig.rules = fixture.combat.rules{Rules.escapeFormula = Expression "if(attempts >= 1, 1, 0)"}}}
                 opened = start configured
                 failed = foldl' Engine.applyEvent opened (Turn.resolveAction opened EscapeBattle)
                 escaped = foldl' Engine.applyEvent failed (Turn.resolveAction failed EscapeBattle)
              in assertBool "Expected a failed attempt followed by safe escape" (fmap (.escapeAttempts) failed.battle == Just 1 && map (.hitPoints) escaped.party.members == [15] && fmap (.outcome) escaped.battle == Just (Just Escaped))
         ]
   where
-    capturable = fixture{GameState.combat = fixture.combat{CombatConfig.battles = Map.adjust (\definition -> definition{BattleDefinition.allowCapture = True}) "practice" fixture.combat.battles, CombatConfig.items = Map.singleton "capsule" defaultItem{Item.captureBonus = 1}, CombatConfig.rules = fixture.combat.rules{Rules.captureFormula = Formula "1"}}, GameState.inventory = Map.singleton "capsule" 1}
+    capturable = fixture{GameState.combat = fixture.combat{CombatConfig.battles = Map.adjust (\definition -> definition{BattleDefinition.allowCapture = True}) "practice" fixture.combat.battles, CombatConfig.items = Map.singleton "capsule" defaultItem{Item.captureBonus = 1}, CombatConfig.rules = fixture.combat.rules{Rules.captureFormula = Expression "1"}}, GameState.inventory = Map.singleton "capsule" 1}
 
 lifecycleTests :: TestTree
 lifecycleTests =
@@ -396,14 +415,14 @@ statusTests =
                 opened = start configured{GameState.party = Party (configured.party.members <> [basicCritter 10 2 10 "leafling"])}
                 boosted = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "technique")))
                 switched = foldl' Engine.applyEvent boosted (Turn.resolveAction boosted (SwitchCritter 1))
-             in assertBool "Expected the game limit and switch reset" (fmap (Map.lookup "attack" . (.playerStages)) boosted.battle == Just (Just 6) && fmap (.playerStages) switched.battle == Just Map.empty)
+             in assertBool "Expected the game limit and switch reset" (fmap (Map.lookup "attack" . (.playerStages.values)) boosted.battle == Just (Just 6) && fmap (.playerStages) switched.battle == Just (StageValues Map.empty))
         , testCase "Use actual total damage for drain effects" $
-            let configured = configure defaultMove{Move.power = 5, Move.minHits = 2, Move.maxHits = 2, Move.effects = [ChangeHealth Self (Formula "damage / 2")]} defaultStatus
+            let configured = configure defaultMove{Move.power = 5, Move.minHits = 2, Move.maxHits = 2, Move.effects = [ChangeHealth Self (Expression "damage / 2")]} defaultStatus
                 opened = start configured{GameState.party = Party [((basicCritter 10 2 20 "leafling"){Critter.battleProfile = defaultProfile{BattleProfile.knownMoves = [MoveId "technique"]}})]}
                 result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "technique")))
              in assertBool "Expected drain from both hits before the battle ends" (map (.hitPoints) result.party.members == [15] && fmap (.outcome) result.battle == Just (Just Victory))
         , testCase "Configure simultaneous final faint outcomes" $
-            let configured = configure defaultMove{Move.power = 10, Move.effects = [ChangeHealth Self (Formula "-hp")]} defaultStatus
+            let configured = configure defaultMove{Move.power = 10, Move.effects = [ChangeHealth Self (Expression "-hp")]} defaultStatus
                 opened = start configured
                 lost = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "technique")))
                 alternative = start configured{GameState.combat = configured.combat{CombatConfig.rules = configured.combat.rules{Rules.simultaneousDefeatWins = True}}}
@@ -439,13 +458,13 @@ tests =
                 size <- timeout 5000000 (evaluate (Text.length (Schema.renderPlainSchemaViaCodec @GameState)))
                 assertBool "Expected the complete game schema to render" (maybe False (> 0) size)
             , testCase "Evaluate arithmetic, rounding and conditional rules" $ do
-                assertBool "Expected game-defined damage" (Formula.evaluate (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Formula "max(1, floor(power * attack / defense / 5))") == Right 11)
-                assertBool "Expected lazy conditionals and comparisons" (Formula.evaluate Map.empty (Formula "if(2 >= 1, 2^3 + ceil(1.2), 1/0)") == Right 10)
-                assertBool "Expected exponentiation before negation" (Formula.evaluate Map.empty (Formula "-2^2 + 2^-2 + 2^3^2") == Right 508.25)
-                assertBool "Expected a finite rule result" (isLeft (Formula.evaluate Map.empty (Formula "1/0")))
-                assertBool "Expected unknown variables to fail" (isLeft (Formula.evaluate Map.empty (Formula "missing + 1")))
+                assertBool "Expected game-defined damage" (Expression.evaluateNumber (Map.fromList [("power", 30), ("attack", 15), ("defense", 8)]) (Expression "max(1, floor(power * attack / defense / 5))") == Right 11)
+                assertBool "Expected lazy conditionals and comparisons" (Expression.evaluateNumber Map.empty (Expression "if(2 >= 1, 2^3 + ceil(1.2), 1/0)") == Right 10)
+                assertBool "Expected exponentiation before negation" (Expression.evaluateNumber Map.empty (Expression "-2^2 + 2^-2 + 2^3^2") == Right 508.25)
+                assertBool "Expected a finite rule result" (isLeft (Expression.evaluateNumber Map.empty (Expression "1/0")))
+                assertBool "Expected unknown variables to fail" (isLeft (Expression.evaluateNumber Map.empty (Expression "missing + 1")))
             , testCase "Round trip a game-defined ruleset" $
-                let rules = defaultRules{Rules.damageFormula = Formula "floor(power + level)", Rules.tieBreak = "random", Rules.maxKnownMoves = 6, Rules.typeChart = Map.singleton "fire" (Map.singleton "grass" 2)}
+                let rules = defaultRules{Rules.damageFormula = Expression "floor(power + level)", Rules.tieBreak = "random", Rules.maxKnownMoves = 6, Rules.typeChart = Map.singleton "fire" (Map.singleton "grass" 2)}
                  in assertBool "Expected rules to be game data" (Aeson.eitherDecode (Aeson.encode rules) == Right rules)
             , testCase "Require explicit health and stat formulas" $ do
                 assertBool "Expected healthFormula to be required" (isLeft (Aeson.eitherDecode @Rules "{\"statFormula\":\"base\"}"))
@@ -454,16 +473,16 @@ tests =
                 assertBool "Expected policy validation" (isLeft (Aeson.eitherDecode @Rules "{\"tieBreak\":\"missing\"}"))
                 assertBool "Expected rule variable validation" (isLeft (Aeson.eitherDecode @Rules "{\"damageFormula\":\"missing + 1\"}"))
             , testCase "Reject malformed expressions and invalid function arity" $ do
-                assertBool "Expected malformed expressions to fail decoding" (isLeft (Aeson.eitherDecode @Formula "\"floor(\""))
-                assertBool "Expected arity validation" (isLeft (Aeson.eitherDecode @Formula "\"min(1)\""))
-                assertBool "Expected variable discovery" (Formula.variables (Formula "max(attack, attack / defense)") == Right ["attack", "defense"])
+                assertBool "Expected malformed expressions to fail decoding" (isLeft (Aeson.eitherDecode @Expression "\"floor(\""))
+                assertBool "Expected arity validation" (isLeft (Aeson.eitherDecode @Expression "\"min(1)\""))
+                assertBool "Expected variable discovery" (Expression.variables (Expression "max(attack, attack / defense)") == Right ["attack", "defense"])
             ]
         , testGroup
             "Moves"
             [ testCase "Decode an independently written move type and defaults" $
                 assertBool "Expected configured move type and default targeting rules" (Aeson.eitherDecode @Move "{\"name\":\"Basic strike\",\"power\":20,\"type\":\"fire\"}" == Right defaultMove{Move.affinity = "fire"})
             , testCase "Round trip conditional move effects" $
-                let move = defaultMove{Move.effects = [Chance 0.25 (InflictStatus Opponent "slow"), ChangeHealth Self (Formula "damage / 2"), ChangeStage Opponent "defense" (-1)]}
+                let move = defaultMove{Move.effects = [Chance 0.25 (InflictStatus Opponent "slow"), ChangeHealth Self (Expression "damage / 2"), ChangeStage Opponent "defense" (-1)]}
                  in assertBool "Expected all authored effects to survive serialization" (Aeson.eitherDecode (Aeson.encode move) == Right move)
             , testCase "Reject invalid probabilities, resources and hit counts" $
                 mapM_
@@ -497,7 +516,7 @@ turnTests =
                 let completedFlag = FlagId "practice.completed"
                     effects = [SetFlag completedFlag True]
                     definition = defaultDefinition{BattleDefinition.allowCapture = True, BattleDefinition.allowEscape = True, BattleDefinition.captureEffects = effects, BattleDefinition.defeatEffects = effects, BattleDefinition.escapeEffects = effects, BattleDefinition.opponents = [basicCritter 5 2 10 "stonekin"], BattleDefinition.victoryEffects = effects}
-                    configured = fixture{GameState.combat = fixture.combat{CombatConfig.battles = Map.singleton "practice" definition, CombatConfig.items = Map.singleton "capsule" defaultItem{Item.captureBonus = 1}, CombatConfig.rules = fixture.combat.rules{Rules.captureFormula = Formula "1", Rules.escapeFormula = Formula "1"}}, GameState.inventory = Map.singleton "capsule" 1, GameState.party = Party [basicCritter (if outcome == Defeat then 3 else 20) 2 20 "leafling"]}
+                    configured = fixture{GameState.combat = fixture.combat{CombatConfig.battles = Map.singleton "practice" definition, CombatConfig.items = Map.singleton "capsule" defaultItem{Item.captureBonus = 1}, CombatConfig.rules = fixture.combat.rules{Rules.captureFormula = Expression "1", Rules.escapeFormula = Expression "1"}}, GameState.inventory = Map.singleton "capsule" 1, GameState.party = Party [basicCritter (if outcome == Defeat then 3 else 20) 2 20 "leafling"]}
                     opened = start configured
                     -- Survive the player's hit so the opponent can cause defeat.
                     ready = if outcome == Defeat then opened{GameState.battle = fmap (\active -> active{Battle.opponentParty = [basicCritter 10 2 10 "stonekin"]}) opened.battle} else opened
@@ -584,7 +603,7 @@ variationTests =
                 result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
              in assertBool "Expected both misses and spent uses" (map (.hitPoints) result.party.members == [20] && fmap (map (.hitPoints) . (.opponentParty)) result.battle == Just [10] && map ((.battleProfile.remainingUses)) result.party.members == [Map.singleton (MoveId "strike") 4])
         , testCase "Configure critical damage" $
-            let configured = fixture{GameState.combat = fixture.combat{CombatConfig.moves = Map.adjust (\move -> move{Move.criticalRate = 1}) (MoveId "strike") fixture.combat.moves, CombatConfig.rules = defaultRules{Rules.damageFormula = Formula "power * critical"}}}
+            let configured = fixture{GameState.combat = fixture.combat{CombatConfig.moves = Map.adjust (\move -> move{Move.criticalRate = 1}) (MoveId "strike") fixture.combat.moves, CombatConfig.rules = defaultRules{Rules.damageFormula = Expression "power * critical"}}}
                 opened = start configured
                 result = foldl' Engine.applyEvent opened (Turn.resolveAction opened (UseMove (MoveId "strike")))
              in assertBool "Expected a configured critical victory" (fmap (.outcome) result.battle == Just (Just Victory) && map (.hitPoints) result.party.members == [20])

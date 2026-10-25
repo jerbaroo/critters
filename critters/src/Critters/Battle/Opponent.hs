@@ -7,9 +7,11 @@ import Critters.Battle.Common (Context (..), Side (..))
 import Critters.Battle.Common qualified as Common
 import Critters.Battle.Damage qualified as Damage
 import Critters.Number (number)
+import Critters.Stage qualified as Stage
 import Critters.State.Battle (Battle (..))
 import Critters.State.BattleDefinition qualified as Definition
 import Critters.State.BattleProfile qualified as Profile
+import Critters.State.CombatConfig qualified as Config
 import Critters.State.Critter qualified as Critter
 import Critters.State.Move (Move)
 import Critters.State.Move qualified as Move
@@ -34,7 +36,6 @@ chooseAction = do
 scoreMove :: Context -> Move -> Double
 scoreMove context move =
     Common.evaluate
-        0
         rules.aiScoreFormula
         [ ("accuracy", max 0 (min 1 (Damage.accuracyFor context Enemy move)))
         , ("damage", min targetHealth (damage + extraDamage))
@@ -45,8 +46,8 @@ scoreMove context move =
         , ("targetHP", targetHealth)
         ]
   where
-    criticalChance = max 0 (min 1 (Common.evaluate 0 rules.criticalFormula [("criticalRate", move.criticalRate), ("speed", Common.stat context Enemy rules.speedStat), ("level", level Enemy), ("targetLevel", level Player)]))
-    criticalMultiplier = max 0 (Common.evaluate 1 rules.criticalMultiplierFormula [("level", level Enemy), ("targetLevel", level Player)])
+    criticalChance = max 0 (min 1 (Common.evaluate rules.criticalFormula [("criticalRate", move.criticalRate), ("speed", Common.stat context Enemy rules.speedStat), ("level", level Enemy), ("targetLevel", level Player)]))
+    criticalMultiplier = max 0 (Common.evaluate rules.criticalMultiplierFormula [("level", level Enemy), ("targetLevel", level Player)])
     damage = number (Damage.damageFor context Enemy move (1 + criticalChance * (criticalMultiplier - 1)) ((rules.randomDamageMin + rules.randomDamageMax) / 2)) * hits
     (extraDamage, healing, utility) = foldl' add (0, 0, 0) (map effectValue move.effects)
     add (a, b, c) (x, y, z) = (a + x, b + y, c + z)
@@ -56,13 +57,12 @@ scoreMove context move =
             let side = if target == Self then Enemy else Player
                 hp = maybe 0 (number . (.hitPoints)) (Common.active side context)
                 maximumHP = maybe 1 (number . (.maxHitPoints)) (Common.active side context)
-                amount = Common.evaluate 0 formula [("damage", damage), ("hp", hp), ("maxHP", maximumHP), ("level", level Enemy), ("targetHP", hp), ("targetMaxHP", maximumHP)]
+                amount = Common.evaluate formula [("damage", damage), ("hp", hp), ("maxHP", maximumHP), ("level", level Enemy), ("targetHP", hp), ("targetMaxHP", maximumHP)]
              in if target == Self then (0, max 0 (min (maximumHP - hp) amount), 0) else (max 0 (-amount), 0, 0)
         ChangeStage target identifier amount ->
             let stages = (if target == Self then (.enemyStages) else (.playerStages)) context.battle
-                old = Map.findWithDefault 0 identifier stages
-                limit = rules.stageLimit
-                delta = max (-limit) (min limit (old + max (-limit) (min limit amount))) - old
+                (_, change) = Stage.changeStage context.battle.config.stages stages identifier amount
+                delta = change.after - change.before
              in (0, 0, number (if target == Self then delta else -delta))
         ClearStatus target -> (0, 0, if maybe False (isJust . (.battleProfile.status)) (Common.active (if target == Self then Enemy else Player) context) then (if target == Self then 1 else -1) else 0)
         InflictStatus target _ -> (0, 0, if maybe False (not . isJust . (.battleProfile.status)) (Common.active (if target == Self then Enemy else Player) context) then 1 else 0)

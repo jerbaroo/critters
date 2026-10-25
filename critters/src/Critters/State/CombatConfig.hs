@@ -2,7 +2,7 @@ module Critters.State.CombatConfig (CombatConfig (..), defaultCombat) where
 
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
-import Critters.Formula qualified as Formula
+import Critters.Expression qualified as Expression
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.BattleDefinition (BattleDefinition)
 import Critters.State.BattleDefinition qualified as Definition
@@ -20,6 +20,8 @@ import Critters.State.Rules (Rules, defaultRules)
 import Critters.State.Rules qualified as Rules
 import Critters.State.Species (Species)
 import Critters.State.Species qualified as Species
+import Critters.State.Stage (StageDefinitions (..))
+import Critters.State.StatName (StatName)
 import Critters.State.StatusDefinition (StatusDefinition)
 import Data.Aeson qualified as Aeson
 import Data.Map.Strict (Map)
@@ -31,9 +33,12 @@ data CombatConfig = CombatConfig
     { battles :: Map Text BattleDefinition
     , encounters :: [Encounter]
     , items :: Map Text Item
+    , messages :: Map Text Text
     , moves :: Map MoveId Move
     , rules :: Rules
     , species :: Map Text Species
+    , stages :: StageDefinitions
+    , statNames :: Map StatName Text
     , statuses :: Map Text StatusDefinition
     }
     deriving stock (Eq)
@@ -45,9 +50,12 @@ defaultCombat =
         { battles = Map.empty
         , encounters = []
         , items = Map.empty
+        , messages = Map.empty
         , moves = Map.empty
         , rules = defaultRules
         , species = Map.empty
+        , stages = StageDefinitions Map.empty
+        , statNames = Map.empty
         , statuses = Map.empty
         }
 
@@ -60,9 +68,12 @@ instance HasCodec CombatConfig where
                         <$> Codec.optionalFieldWithOmittedDefault "battles" (Map.empty) "Named, scripted or encounter battles." Codec..= (.battles)
                         <*> Codec.optionalFieldWithOmittedDefault "encounters" ([]) "Encounter tables." Codec..= (.encounters)
                         <*> Codec.optionalFieldWithOmittedDefault "items" (Map.empty) "Battle item definitions." Codec..= (.items)
+                        <*> Codec.optionalFieldWithOmittedDefault "messages" Map.empty "Game-defined battle message templates with expression placeholders." Codec..= (.messages)
                         <*> Codec.optionalFieldWithOmittedDefault "moves" (Map.empty) "Move definitions." Codec..= (.moves)
                         <*> Codec.optionalFieldWithOmittedDefault "rules" (defaultRules) "Game-defined combat and progression rules." Codec..= (.rules)
                         <*> Codec.optionalFieldWithOmittedDefault "species" (Map.empty) "Species stats, types and learnsets." Codec..= (.species)
+                        <*> Codec.optionalFieldWithOmittedDefault "stages" (StageDefinitions Map.empty) "Game-defined temporary stage limits and multipliers, keyed by stat name." Codec..= (.stages)
+                        <*> Codec.optionalFieldWithOmittedDefault "statNames" Map.empty "Display labels keyed by stat name." Codec..= (.statNames)
                         <*> Codec.optionalFieldWithOmittedDefault "statuses" (Map.empty) "Persistent status definitions." Codec..= (.statuses)
       where
         validate value
@@ -91,7 +102,7 @@ instance HasCodec CombatConfig where
             validCritter critter = Map.member critter.species value.species && all knownMove critter.battleProfile.knownMoves && maybe True (\affliction -> Map.member affliction.status value.statuses) critter.battleProfile.status
             validEffect = \case
                 Chance _ effect -> validEffect effect
-                ChangeHealth _ formula -> either (const False) (all (`elem` ["damage", "hp", "maxHP", "level", "targetHP", "targetMaxHP"])) (Formula.variables formula)
-                ChangeStage _ stat _ -> not (Text.null (Text.strip stat))
+                ChangeHealth _ formula -> either (const False) (all (`elem` ["damage", "hp", "maxHP", "level", "targetHP", "targetMaxHP"])) (Expression.variables formula)
+                ChangeStage{} -> True
                 ClearStatus _ -> True
                 InflictStatus _ identifier -> Map.member identifier value.statuses

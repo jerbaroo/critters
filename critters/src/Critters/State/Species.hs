@@ -4,17 +4,18 @@ import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
 import Critters.Codec qualified as NumberCodec
 import Critters.State.MoveId (MoveId)
+import Critters.State.StatName (StatName)
 import Data.Aeson qualified as Aeson
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 
-newtype BaseStats = BaseStats {values :: Map Text Int}
+newtype BaseStats = BaseStats {values :: Map StatName Int}
     deriving stock (Eq)
     deriving (Aeson.FromJSON, Aeson.ToJSON) via (Autodocodec BaseStats)
 
 instance HasCodec BaseStats where
-    codec = Codec.dimapCodec BaseStats (.values) (Codec.mapCodec Codec.codec)
+    codec = Codec.dimapCodec BaseStats (.values) Codec.codec
 
 defaultSpecies :: Species
 defaultSpecies =

@@ -43,7 +43,7 @@ beginEncounter state entry = do
     species <- maybe (Left "That encounter species is not defined.") Right (Map.lookup entry.species state.combat.species)
     let level = entry.level
         baseHealth = Map.findWithDefault (Map.findWithDefault 20 "health" (((Species.defaultSpecies).stats).values)) "health" species.stats.values
-        hitPoints = max 1 $ Number.integer $ Common.evaluate (Number.number baseHealth) state.combat.rules.healthFormula [("base", Number.number baseHealth), ("level", Number.number level)]
+        hitPoints = max 1 $ Number.integer $ Common.evaluate state.combat.rules.healthFormula [("base", Number.number baseHealth), ("level", Number.number level)]
         displayName = if Text.null (Text.strip species.name) then entry.species else species.name
         definition =
             Definition.defaultDefinition

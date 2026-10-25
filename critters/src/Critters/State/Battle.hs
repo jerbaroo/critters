@@ -8,10 +8,9 @@ import Critters.State.BattlePhase (BattlePhase (ActionMenu))
 import Critters.State.CombatConfig (CombatConfig, defaultCombat)
 import Critters.State.CombatConfig qualified as Config
 import Critters.State.Critter (Critter)
-import Critters.State.Rules qualified as Rules
+import Critters.State.Stage (StageDefinition (..), StageValues (..), stageDefinition)
 import Data.Aeson qualified as Aeson
 import Data.List (nub)
-import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 
@@ -21,7 +20,7 @@ data Battle = Battle
     , capturedOpponents :: [Int]
     , config :: CombatConfig
     , definition :: BattleDefinition
-    , enemyStages :: Map Text Int
+    , enemyStages :: StageValues
     , escapeAttempts :: Int
     , initialSeed :: Maybe Int
     , introductionIndex :: Int
@@ -30,7 +29,7 @@ data Battle = Battle
     , outcome :: Maybe BattleOutcome
     , participants :: [Int]
     , phase :: BattlePhase
-    , playerStages :: Map Text Int
+    , playerStages :: StageValues
     , rewardedOpponents :: [Int]
     , selected :: Int
     , selectedItem :: Maybe Text
@@ -47,7 +46,7 @@ defaultBattle =
         , capturedOpponents = []
         , config = defaultCombat
         , definition = defaultDefinition
-        , enemyStages = Map.empty
+        , enemyStages = StageValues Map.empty
         , escapeAttempts = 0
         , initialSeed = Nothing
         , introductionIndex = 0
@@ -56,7 +55,7 @@ defaultBattle =
         , outcome = Nothing
         , participants = []
         , phase = ActionMenu
-        , playerStages = Map.empty
+        , playerStages = StageValues Map.empty
         , rewardedOpponents = []
         , selected = 0
         , selectedItem = Nothing
@@ -73,7 +72,7 @@ instance HasCodec Battle where
                     <*> Codec.optionalFieldWithOmittedDefault "capturedOpponents" [] "Opponents captured during this battle." Codec..= (.capturedOpponents)
                     <*> Codec.optionalFieldWithOmittedDefault "config" (defaultCombat) "Configuration snapshot selected at entry." Codec..= (.config)
                     <*> Codec.optionalFieldWithOmittedDefault "definition" (defaultDefinition) "Battle definition snapshot." Codec..= (.definition)
-                    <*> Codec.optionalFieldWithOmittedDefault "enemyStages" (Map.empty) "Temporary opposing stat stages." Codec..= (.enemyStages)
+                    <*> Codec.optionalFieldWithOmittedDefault "enemyStages" (StageValues Map.empty) "Temporary opposing stat stages." Codec..= (.enemyStages)
                     <*> Codec.optionalFieldWithOmittedDefault "escapeAttempts" (0) "Failed escape attempts." Codec..= (.escapeAttempts)
                     <*> Codec.optionalFieldOrNull "initialSeed" "Random state at entry; absent in older histories." Codec..= (.initialSeed)
                     <*> Codec.optionalFieldWithOmittedDefault "introductionIndex" 0 "Current pre-battle dialogue line." Codec..= (.introductionIndex)
@@ -82,17 +81,20 @@ instance HasCodec Battle where
                     <*> Codec.optionalFieldOrNull "outcome" "Resolved outcome awaiting acknowledgement." Codec..= (.outcome)
                     <*> Codec.optionalFieldWithOmittedDefault "participants" ([]) "Player party indices that have participated." Codec..= (.participants)
                     <*> Codec.optionalFieldWithOmittedDefault "phase" (ActionMenu) "Current battle menu." Codec..= (.phase)
-                    <*> Codec.optionalFieldWithOmittedDefault "playerStages" (Map.empty) "Temporary player stat stages." Codec..= (.playerStages)
+                    <*> Codec.optionalFieldWithOmittedDefault "playerStages" (StageValues Map.empty) "Temporary player stat stages." Codec..= (.playerStages)
                     <*> Codec.optionalFieldWithOmittedDefault "rewardedOpponents" [] "Opponent indices whose experience has been resolved." Codec..= (.rewardedOpponents)
                     <*> Codec.optionalFieldWithOmittedDefault "selected" (0) "Selected menu entry." Codec..= (.selected)
                     <*> Codec.optionalFieldOrNull "selectedItem" "Item awaiting a party target." Codec..= (.selectedItem)
                     <*> Codec.optionalFieldWithOmittedDefault "turn" (0) "Completed turns." Codec..= (.turn)
       where
+        outsideLimit definitions (name, stage) =
+            let limit = (stageDefinition definitions name).limit
+             in stage < negate limit || stage > limit
         validate value
             | value.activeOpponent < 0 || value.activeOpponent >= length value.opponentParty = Left "Active opponent index is outside its party."
             | value.introductionIndex < 0 || value.activePlayer < 0 || value.escapeAttempts < 0 || value.selected < 0 || value.turn < 0 || any (< 0) value.participants = Left "Battle indices and counts must not be negative."
             | maybe False (\seed -> seed < 0 || seed > 2147483647) value.initialSeed = Left "Invalid battle entry seed."
             | length (nub value.participants) /= length value.participants = Left "Battle participants must be unique."
             | any (\index -> index < 0 || index >= length value.opponentParty) (value.capturedOpponents <> value.rewardedOpponents) = Left "Recorded opponent indices are outside the opposing party."
-            | any (\stage -> stage < negate value.config.rules.stageLimit || stage > value.config.rules.stageLimit) (Map.elems value.playerStages <> Map.elems value.enemyStages) = Left "Battle stages exceed the configured limit."
+            | any (outsideLimit value.config.stages) (Map.toList value.playerStages.values <> Map.toList value.enemyStages.values) = Left "Battle stages exceed the configured limit."
             | otherwise = Right value

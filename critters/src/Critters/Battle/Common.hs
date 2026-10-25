@@ -38,9 +38,10 @@ import Control.Monad.Trans.State.Strict (State)
 import Control.Monad.Trans.State.Strict qualified as State
 import Critters.Event (Event)
 import Critters.Event qualified as Event
-import Critters.Formula (Formula)
-import Critters.Formula qualified as Formula
+import Critters.Expression (Expression)
+import Critters.Expression qualified as Expression
 import Critters.Number (integer, number)
+import Critters.Stage qualified as Stage
 import Critters.State.Affliction qualified as Affliction
 import Critters.State.Battle (Battle (..))
 import Critters.State.Battle qualified as Battle
@@ -60,6 +61,7 @@ import Critters.State.Party (Party (..))
 import Critters.State.Rules (Rules)
 import Critters.State.Rules qualified as Rules
 import Critters.State.Species qualified as Species
+import Critters.State.StatName (StatName)
 import Critters.State.StatusDefinition qualified as Status
 import Data.List (nub)
 import Data.Map.Strict (Map)
@@ -92,7 +94,7 @@ availableMoves side context = case active side context of
         definition <- Map.lookup identifier context.battle.config.moves
         if definition.maxUses == 0 || moveRemaining critter identifier definition > 0 then Just (identifier, definition) else Nothing
 
-baseStat :: Context -> Side -> Text -> Double
+baseStat :: Context -> Side -> StatName -> Double
 baseStat context side identifier = case active side context of
     Nothing -> 1
     Just critter -> max 1 (Map.findWithDefault 1 identifier (statsFor context.battle critter) * statusMultiplier critter)
@@ -168,8 +170,8 @@ endBattle outcome = do
         Escaped -> "Escaped safely."
         Victory -> "Victory."
 
-evaluate :: Double -> Formula -> [(Text, Double)] -> Double
-evaluate fallback formula environment = either (const fallback) id (Formula.evaluate (Map.fromList environment) formula)
+evaluate :: Expression -> [(Text, Double)] -> Double
+evaluate formula environment = either (error . from) id (Expression.evaluateNumber (Map.fromList environment) formula)
 
 healParty :: Double -> Party -> Party
 healParty fraction (Party critters)
@@ -220,30 +222,27 @@ setCritter :: Side -> Int -> Critter -> Context -> Context
 setCritter Enemy index critter context = context{battle = context.battle{Battle.opponentParty = modifyAt index (const critter) context.battle.opponentParty}}
 setCritter Player index critter context = context{party = Party (modifyAt index (const critter) context.party.members)}
 
-setStage :: Side -> Text -> Int -> Context -> Context
-setStage side identifier delta context = context{battle = updated}
+setStage :: Side -> StatName -> Int -> Context -> (Stage.StageChange, Context)
+setStage side identifier delta context = (change, context{battle = updated})
   where
     current = context.battle
-    limit = (rulesFor context).stageLimit
     stages = (if side == Player then (.playerStages) else (.enemyStages)) current
-    next = Map.insert identifier (max (-limit) (min limit (max (-limit) (min limit (Map.findWithDefault 0 identifier stages)) + max (-limit) (min limit delta)))) stages
+    (next, change) = Stage.changeStage current.config.stages stages identifier delta
     updated = if side == Player then current{Battle.playerStages = next} else current{Battle.enemyStages = next}
 
 data Side = Enemy | Player
     deriving stock (Eq)
 
-stageFactor :: Context -> Side -> Text -> Double
-stageFactor context side identifier = max 0 $ evaluate 1 formula [("stage", number stage)]
+stageFactor :: Context -> Side -> StatName -> Double
+stageFactor context side identifier = Stage.stageFactor context.battle.config.stages stages identifier
   where
     stages = (if side == Player then (.playerStages) else (.enemyStages)) context.battle
-    stage = Map.findWithDefault 0 identifier stages
-    formula = (if identifier `elem` ["accuracy", "evasion"] then (.accuracyStageFormula) else (.stageMultiplierFormula)) (rulesFor context)
 
-stat :: Context -> Side -> Text -> Double
+stat :: Context -> Side -> StatName -> Double
 stat context side identifier = max 1 (baseStat context side identifier * stageFactor context side identifier)
 
-statsFor :: Battle -> Critter -> Map Text Double
-statsFor current critter = Map.map (\base -> max 1 (evaluate (number base) rules.statFormula [("base", number base), ("level", number critter.level)])) definition.stats.values
+statsFor :: Battle -> Critter -> Map StatName Double
+statsFor current critter = Map.map (\base -> max 1 (evaluate rules.statFormula [("base", number base), ("level", number critter.level)])) definition.stats.values
   where
     definition = Map.findWithDefault Species.defaultSpecies critter.species current.config.species
     rules = current.config.rules

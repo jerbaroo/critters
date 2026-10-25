@@ -3,6 +3,7 @@ module Critters.State.StatusDefinition (defaultStatus, StatusDefinition (..)) wh
 import Autodocodec (Autodocodec (..), HasCodec)
 import Autodocodec qualified as Codec
 import Critters.Codec qualified as NumberCodec
+import Critters.State.StatName (StatName)
 import Data.Aeson qualified as Aeson
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -30,7 +31,7 @@ data StatusDefinition = StatusDefinition
     , durationMin :: Int
     , immuneTypes :: [Text]
     , name :: Text
-    , statMultipliers :: Map Text Double
+    , statMultipliers :: Map StatName Double
     , tickOnApply :: Bool
     }
     deriving stock (Eq)

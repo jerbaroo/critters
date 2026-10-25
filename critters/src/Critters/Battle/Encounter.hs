@@ -73,6 +73,6 @@ vary Entry.LegacyEncounterEntry{Entry.maxLevel, Entry.minLevel} critter
             high = fromMaybe low maxLevel
         level <- Common.chooseInt low high
         let definition = Map.findWithDefault Species.defaultSpecies critter.species context.battle.config.species
-            health = max 1 (integer (Common.evaluate (number critter.maxHitPoints) ((Common.rulesFor context).healthFormula) [("base", number (Map.findWithDefault critter.maxHitPoints "health" definition.stats.values)), ("level", number level)]))
+            health = max 1 (integer (Common.evaluate ((Common.rulesFor context).healthFormula) [("base", number (Map.findWithDefault critter.maxHitPoints "health" definition.stats.values)), ("level", number level)]))
             remaining = if critter.hitPoints == 0 then 0 else max 1 (min health (integer (number health * number critter.hitPoints / number critter.maxHitPoints)))
         pure critter{Critter.hitPoints = remaining, Critter.level = level, Critter.maxHitPoints = health}
